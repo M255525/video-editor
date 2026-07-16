@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>影片先生 — 影片編輯器</title>
+<link rel="stylesheet" href="css/style.css?v=5">
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══ 頂部工具列 ═══ -->
+  <header id="topbar">
+    <div class="logo">🎬 影片<span>先生</span></div>
+    <input id="projName" class="proj-name" value="未命名專案" spellcheck="false">
+    <span id="saveStatus" class="save-status"></span>
+    <div class="spacer"></div>
+    <button id="btnUndo" class="tb-btn" title="復原 (Ctrl+Z)">↺ 復原</button>
+    <button id="btnRedo" class="tb-btn" title="重做 (Ctrl+Y)">↻ 重做</button>
+    <select id="aspectSel" class="tb-sel" title="畫布比例">
+      <option value="1280x720">16:9 橫式</option>
+      <option value="720x1280">9:16 直式</option>
+      <option value="960x960">1:1 方形</option>
+    </select>
+    <button id="btnNew" class="tb-btn">新專案</button>
+    <button id="btnExport" class="tb-btn primary">⬆ 匯出影片</button>
+  </header>
+
+  <!-- ═══ 中段：左面板 / 預覽 / 屬性 ═══ -->
+  <main id="middle">
+    <aside id="left" style="width:320px">
+      <nav id="leftTabs">
+        <button class="ltab active" data-panel="media">📁<br>媒體</button>
+        <button class="ltab" data-panel="text">🅣<br>文字</button>
+        <button class="ltab" data-panel="sticker">😀<br>貼圖</button>
+        <button class="ltab" data-panel="filter">🎨<br>濾鏡</button>
+        <button class="ltab" data-panel="transition">⇄<br>轉場</button>
+      </nav>
+      <div id="leftBody">
+        <div class="panel active" id="panel-media">
+          <div id="dropzone">
+            <div class="dz-icon">＋</div>
+            <div>點擊或拖曳檔案到此匯入</div>
+            <div class="dz-hint">影片：MP4(H.264)・WebM・MOV</div>
+            <div class="dz-hint">音訊：MP3・WAV・M4A/AAC・OGG・FLAC</div>
+            <div class="dz-hint">圖片：PNG・JPG・GIF・WebP｜字幕：SRT・VTT</div>
+            <input type="file" id="fileInput" multiple accept="video/*,image/*,audio/*,.srt,.vtt,.mkv,.flac" hidden>
+          </div>
+          <div id="mediaGrid"></div>
+        </div>
+        <div class="panel" id="panel-text">
+          <div class="panel-title">點擊將文字加到播放頭位置</div>
+          <div id="textPresets"></div>
+          <div class="panel-title" style="margin-top:16px">匯入字幕檔（自動依時間排到「字幕」軌）</div>
+          <button id="btnSrt" class="text-preset" style="width:100%">📄 匯入 SRT / VTT 字幕檔</button>
+          <input type="file" id="srtInput" accept=".srt,.vtt" multiple hidden>
+        </div>
+        <div class="panel" id="panel-sticker">
+          <div class="panel-title">點擊將貼圖加到播放頭位置</div>
+          <div id="stickerGrid"></div>
+        </div>
+        <div class="panel" id="panel-filter">
+          <div class="panel-title">套用到選取的片段</div>
+          <div id="filterCards"></div>
+        </div>
+        <div class="panel" id="panel-transition">
+          <div class="panel-title">套用到選取片段的開頭（與前一片段銜接）</div>
+          <div id="transitionCards"></div>
+        </div>
+      </div>
+    </aside>
+    <div class="resizer v" id="rzLeft" title="拖曳調整素材面板寬度"></div>
+
+    <section id="center">
+      <div id="previewWrap">
+        <canvas id="previewCanvas"></canvas>
+      </div>
+      <div id="transport">
+        <span id="timeCur" class="time">00:00.00</span>
+        <div class="tr-btns">
+          <button id="btnPrevFrame" class="tr-btn" title="上一格 (←)">⏮</button>
+          <button id="btnPlay" class="tr-btn play" title="播放/暫停 (空白鍵)">▶</button>
+          <button id="btnNextFrame" class="tr-btn" title="下一格 (→)">⏭</button>
+        </div>
+        <span id="timeTotal" class="time dim">00:00.00</span>
+      </div>
+    </section>
+
+    <div class="resizer v" id="rzRight" title="拖曳調整屬性面板寬度"></div>
+    <aside id="right" style="width:300px">
+      <div id="props"><div class="props-empty">選取時間軸上的片段<br>即可編輯屬性</div></div>
+    </aside>
+  </main>
+
+  <!-- ═══ 底部：時間軸 ═══ -->
+  <div class="resizer h" id="rzBottom" title="拖曳調整時間軸高度"></div>
+  <section id="bottom" style="height:280px">
+    <div id="tlToolbar">
+      <button id="btnUndo2" class="tl-btn" title="上一步驟 (Ctrl+Z)">↺ 上一步</button>
+      <button id="btnRedo2" class="tl-btn" title="下一步驟 (Ctrl+Y)">↻ 下一步</button>
+      <span class="tl-sep"></span>
+      <button id="btnSplit" class="tl-btn" title="在播放頭分割選取片段 (S)">✂ 分割</button>
+      <button id="btnDelete" class="tl-btn" title="刪除選取片段 (Del)">🗑 刪除</button>
+      <select id="addTrackSel" class="tb-sel" title="新增軌道">
+        <option value="">＋ 軌道</option>
+        <option value="audio">音訊軌</option>
+        <option value="video">畫中畫軌</option>
+        <option value="overlay">文字/貼圖軌</option>
+      </select>
+      <label class="tl-check"><input type="checkbox" id="chkSnap" checked> 吸附</label>
+      <div class="spacer"></div>
+      <span class="tl-zoom-label">縮放</span>
+      <input type="range" id="zoomSlider" min="10" max="300" value="80">
+    </div>
+    <div id="tlWrap">
+      <div id="tlHeads"></div>
+      <div id="tlBody">
+        <div id="tlContent">
+          <canvas id="ruler" height="28"></canvas>
+          <div id="tracksArea"></div>
+          <div id="playhead"><div class="ph-head"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 頁尾警語 ═══ -->
+  <footer id="footer">
+    <span class="footer-warn">⚠ 本工具僅供教學、課程及個人使用，禁止未經授權公開發布、販售或商業化使用。</span>
+    <a class="footer-link" href="manual.html" target="_blank">📖 操作手冊</a>
+    <span class="footer-credit">創作者：Mark Tsai</span>
+  </footer>
+</div>
+
+<!-- ═══ 匯出對話框 ═══ -->
+<div id="exportModal" class="modal hidden">
+  <div class="modal-box">
+    <h3>匯出影片</h3>
+    <div id="exportInfo" class="exp-info"></div>
+    <div class="exp-bar"><div id="exportProgress"></div></div>
+    <div id="exportStatus" class="exp-status">準備中…</div>
+    <div class="modal-btns">
+      <button id="btnExportStart" class="tb-btn primary">開始匯出</button>
+      <button id="btnExportCancel" class="tb-btn">取消</button>
+    </div>
+    <div class="exp-note">快速匯出以背景編碼產生 MP4，無需播放影片；若瀏覽器不支援會自動改用即時錄製（耗時＝影片長度）。建議使用 Chrome / Edge。<br><strong>本工具僅供教學、課程及個人使用，禁止未經授權公開發布、販售或商業化使用。</strong></div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<!-- mp4-muxer：WebCodecs 快速匯出的 MP4 封裝器（載入失敗時自動退回即時錄製） -->
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
+<script src="js/util.js?v=1"></script>
+<script src="js/state.js?v=2"></script>
+<script src="js/db.js?v=1"></script>
+<script src="js/media.js?v=4"></script>
+<script src="js/preview.js?v=3"></script>
+<script src="js/timeline.js?v=5"></script>
+<script src="js/panels.js?v=3"></script>
+<script src="js/export.js?v=2"></script>
+<script src="js/main.js?v=3"></script>
+</body>
+</html>
