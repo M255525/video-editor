@@ -1,2 +1,6 @@
 # 安裝程式產物：以 MrVideo/build.ps1 重建
 MrVideo/影片先生安裝程式.exe
+
+# 安裝程式產物：以 mrvideo_s/影片先生_V1/build.ps1 重建
+mrvideo_s/影片先生_V1/影片先生課程教學版安裝程式.exe
+mrvideo_s/影片先生_V1.zip

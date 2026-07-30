@@ -3,16 +3,31 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>影片先生 — 影片編輯器</title>
-<link rel="stylesheet" href="css/style.css?v=5">
+<title>影片先生（課程教學版） — 影片編輯器</title>
+<link rel="stylesheet" href="css/style.css?v=1">
 </head>
 <body>
+
+<!-- ═══ 課程授權序號閘門：預設鎖定，驗證通過才會隱藏 ═══ -->
+<div id="licenseGate">
+  <div class="gate-box">
+    <div class="gate-logo">🎬 影片<span>先生</span>（課程教學版）</div>
+    <div class="gate-desc">本工具需輸入課程講師提供的「課程授權序號」並按「確認」驗證通過後才能使用。序號自第一次驗證起提供 12 個月使用期限。</div>
+    <div class="gate-row">
+      <input type="password" id="gateSerial" placeholder="請輸入課程授權序號" autocomplete="off">
+      <button type="button" class="tb-btn" id="btnGateToggle" title="顯示／隱藏序號" aria-label="顯示／隱藏序號">👁</button>
+    </div>
+    <button type="button" class="tb-btn primary" id="btnGateConfirm" style="width:100%;margin-bottom:12px">確認</button>
+    <span id="gateStatus" class="gate-status pending">尚未驗證</span>
+  </div>
+</div>
+
 <div id="app">
 
   <!-- 頂部跑馬燈：內容來自 ai-video-studio 系列共用的 Google Sheet「跑馬燈」檔案 -->
   <div id="marqueeBar"><div id="marqueeTrack"></div></div>
   <script>
-  /* 頂部跑馬燈 — 獨立運作，跟下方主程式 VE 命名空間無關；內容抓自 ai-video-studio 系列共用的授權伺服器（doPost 無論序號是否有效都會附帶 marquee 陣列） */
+  /* 頂部跑馬燈 — 獨立運作，跟序號閘門（license-gate.js）及下方 VE 命名空間都無關；內容抓自 ai-video-studio 系列共用的授權伺服器（doPost 無論序號是否有效都會附帶 marquee 陣列） */
   (function () {
     'use strict';
     var MARQUEE_CHECK_URL = "https://script.google.com/macros/s/AKfycbwKX0DNNbY8y4nf90BFTHtxgfqJcHHcZasRrgycl4QAe52_hkjMWSkYk4xOsqU-JPCROw/exec";
@@ -80,6 +95,7 @@
         <button class="ltab" data-panel="sticker">😀<br>貼圖</button>
         <button class="ltab" data-panel="filter">🎨<br>濾鏡</button>
         <button class="ltab" data-panel="transition">⇄<br>轉場</button>
+        <button class="ltab" data-panel="settings">⚙️<br>設定</button>
       </nav>
       <div id="leftBody">
         <div class="panel active" id="panel-media">
@@ -99,6 +115,9 @@
           <div class="panel-title" style="margin-top:16px">匯入字幕檔（自動依時間排到「字幕」軌）</div>
           <button id="btnSrt" class="text-preset" style="width:100%">📄 匯入 SRT / VTT 字幕檔</button>
           <input type="file" id="srtInput" accept=".srt,.vtt" multiple hidden>
+          <div class="panel-title" style="margin-top:16px">🤖 語音轉字幕（辨識時間軸上的講話聲音）</div>
+          <button id="btnAsr" class="text-preset" style="width:100%">🤖 辨識全片講話並生成字幕</button>
+          <p class="prop-hint" id="asrMsg">辨識完成後會在「字幕」軌新增文字片段，可再手動修改文字與時間。需先在左側「⚙️設定」填入 Gemini API 金鑰。</p>
         </div>
         <div class="panel" id="panel-sticker">
           <div class="panel-title">點擊將貼圖加到播放頭位置</div>
@@ -111,6 +130,12 @@
         <div class="panel" id="panel-transition">
           <div class="panel-title">套用到選取片段的開頭（與前一片段銜接）</div>
           <div id="transitionCards"></div>
+        </div>
+        <div class="panel" id="panel-settings">
+          <div class="panel-title">🤖 AI 功能設定</div>
+          <div class="panel-title" style="margin-top:0;font-weight:bold;color:var(--text)">Gemini API 金鑰</div>
+          <input type="password" id="asrApiKey" placeholder="Gemini API 金鑰（只存本機瀏覽器）" style="width:100%;margin-bottom:8px;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:5px;font-size:12px">
+          <p class="prop-hint">供「文字」面板的「🤖 語音轉字幕」使用。到 <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--accent)">Google AI Studio</a> 免費申請。金鑰只儲存在本機瀏覽器，不會上傳到任何伺服器（僅在辨識時直接傳給 Google Gemini API）。</p>
         </div>
       </div>
     </aside>
@@ -172,6 +197,7 @@
   <!-- ═══ 頁尾警語 ═══ -->
   <footer id="footer">
     <span class="footer-warn">⚠ 本工具僅供教學、課程及個人使用，禁止未經授權公開發布、販售或商業化使用。</span>
+    <span id="gateStatusMini" class="footer-credit"></span>
     <a class="footer-link" href="manual.html" target="_blank">📖 操作手冊</a>
     <span class="footer-credit">創作者：Mark Tsai</span>
   </footer>
@@ -182,6 +208,10 @@
   <div class="modal-box">
     <h3>匯出影片</h3>
     <div id="exportInfo" class="exp-info"></div>
+    <div class="exp-extra">
+      <label class="tl-check"><input type="checkbox" id="chkExportSrt"> 同時匯出字幕檔（.srt）</label>
+      <label class="tl-check"><input type="checkbox" id="chkExportMp3"> 同時匯出音軌（.mp3）</label>
+    </div>
     <div class="exp-bar"><div id="exportProgress"></div></div>
     <div id="exportStatus" class="exp-status">準備中…</div>
     <div class="modal-btns">
@@ -196,14 +226,17 @@
 
 <!-- mp4-muxer：WebCodecs 快速匯出的 MP4 封裝器（載入失敗時自動退回即時錄製） -->
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js"></script>
+<!-- lamejs：純 JS MP3 編碼器，供匯出「同時匯出音軌 (.mp3)」使用（載入失敗時該選項會提示錯誤，不影響影片匯出） -->
+<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+<script src="js/license-gate.js?v=1"></script>
 <script src="js/util.js?v=1"></script>
 <script src="js/state.js?v=2"></script>
 <script src="js/db.js?v=1"></script>
-<script src="js/media.js?v=4"></script>
+<script src="js/media.js?v=5"></script>
 <script src="js/preview.js?v=3"></script>
 <script src="js/timeline.js?v=5"></script>
-<script src="js/panels.js?v=3"></script>
-<script src="js/export.js?v=2"></script>
+<script src="js/panels.js?v=5"></script>
+<script src="js/export.js?v=5"></script>
 <script src="js/main.js?v=3"></script>
 </body>
 </html>

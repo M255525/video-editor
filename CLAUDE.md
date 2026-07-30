@@ -37,6 +37,10 @@
 - 面板可調大小：`.resizer`（rzLeft/rzRight/rzBottom，main.js `initResizers`）拖曳調整左右面板寬與時間軸高，配置存 localStorage key `video-editor-ui-v1`。
 - 專案結構存 localStorage；素材 Blob 存 IndexedDB；素材遺失時顯示「素材離線」，重新匯入**同名檔案**會自動復活原 id。
 
+## 頂部跑馬燈（2026-07-30 新增）
+
+`#marqueeBar` 是 `#app`（`height:100vh` flex column）裡的第一個 flex 子項（非 `position:fixed`，避免蓋住 `#topbar`），內容跟 ai-video-studio 系列（主版／`AIvideo_studio` 教學版／`ppt-course-video`）**共用同一個授權伺服器**（`https://script.google.com/macros/s/AKfycbwKX0.../exec`）與同一份跑馬燈 Google Sheet（<https://docs.google.com/spreadsheets/d/1sSBXW2dAc-4u0j21Q72MzNEBIhDccShhr1iJcAdG0UE/edit>）。本專案（根目錄版）沒有序號登入機制，做法是頁面載入時直接 POST 空序號給該網址（`doPost` 不論序號有效與否都會附上 `marquee` 陣列），`localStorage` key `ve_marquee`，每 20 分鐘背景重抓一次；獨立 `<script>` 掛在 `<body>` 開頭、`#app` 裡最前面，跟下方 `VE` 命名空間模組完全無關。改跑馬燈內容直接編輯該份 Sheet 即可，不需要重新部署 Apps Script，四個工具會同時更新。**`mrvideo_s/` 教學版也已同步加上（2026-07-30）**：做法跟根目錄版完全一樣的直接呼叫，**沒有**改成跟 `AIvideo_studio` 一樣「夾帶在序號驗證回應裡」——`mrvideo_s` 有自己獨立的序號驗證 Apps Script（跟這份共用跑馬燈 Sheet 完全無關），改成夾帶做法要另外去改它自己的 `Code.gs` 並重新部署，權衡後選擇直接呼叫共用端點的簡單做法，兩者互不影響。差異只在版面：`mrvideo_s` 的 `#marqueeBar` 放在 `#licenseGate` 全螢幕鎖定遮罩**之後**、`#app` 內部最上方（不是 fixed 蓋在遮罩上面），所以鎖定畫面顯示時跑馬燈是被擋住的，序號驗證通過、遮罩隱藏後才會看到——這是刻意的簡化，不是遺漏。詳見 `mrvideo_s/CLAUDE.md`。
+
 ## 已知限制
 
 - 快速匯出需要 WebCodecs（Chrome/Edge）＋ CDN 載入 mp4-muxer；兩者缺一自動退回即時錄製（耗時＝影片長度）。快速匯出中音訊的曲線變速以平均速率近似。
