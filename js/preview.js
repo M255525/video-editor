@@ -288,13 +288,17 @@
     }
   };
 
+  var ANTI_CLICK = 0.03;   // 片段交界處最短淡入/淡出（秒），避免無淡入淡出設定時因音量瞬變產生喀聲
+
   function effVolume(clip, t, track) {
     if (track.muted || clip.muted) return 0;
     var v = clip.volume;
     var dt = t - clip.start;
     var rem = clip.start + clip.duration - t;
-    if (clip.fadeIn > 0 && dt < clip.fadeIn) v *= VE.clamp(dt / clip.fadeIn, 0, 1);
-    if (clip.fadeOut > 0 && rem < clip.fadeOut) v *= VE.clamp(rem / clip.fadeOut, 0, 1);
+    var fi = Math.max(clip.fadeIn, ANTI_CLICK);
+    var fo = Math.max(clip.fadeOut, ANTI_CLICK);
+    if (dt < fi) v *= VE.clamp(dt / fi, 0, 1);
+    if (rem < fo) v *= VE.clamp(rem / fo, 0, 1);
     return VE.clamp(v, 0, 2);
   }
 

@@ -15,11 +15,11 @@
 | `js/util.js` | uid/clamp/fmtTime、變速曲線 `VE.CURVES`、關鍵影格內插 `VE.kfValue/kfSet/kfRemove`、toast |
 | `js/state.js` | 資料模型（project/track/clip）、undo/redo（快照式）、localStorage 存讀（key `video-editor-project-v1`） |
 | `js/db.js` | IndexedDB（`video-editor-db`/`blobs`）存素材二進位，重新整理後可還原 |
-| `js/media.js` | 匯入（input/拖放）、metadata 探測與縮圖、素材庫 UI、隱藏 `<video>/<audio>` 元素池 `VE.clipEls` |
+| `js/media.js` | 匯入（input/拖放）、metadata 探測與縮圖、素材庫 UI、隱藏 `<video>/<audio>` 元素池 `VE.clipEls`；`getOrCreateSubtitleTrack()`（找/建專用「字幕」疊加軌，SRT 匯入與語音轉字幕共用）、`VE.addTranscriptSegments(segments)`（把 `[{start,end,text}]` 生成文字片段塞進字幕軌） |
 | `js/preview.js` | Canvas 2D 逐幀合成（濾鏡 `ctx.filter`、關鍵影格 transform、轉場、文字/貼圖）、rAF 播放時鐘、Web Audio 混音、預覽畫布拖曳移動 |
 | `js/timeline.js` | 多軌時間軸：渲染、拖曳/跨軌搬移、邊緣裁切、分割、吸附、sticky 尺規（只畫可視範圍，避開 canvas 寬度上限） |
-| `js/panels.js` | 左側（文字預設/emoji 貼圖/濾鏡預設/轉場卡片）＋右側屬性面板（變換+關鍵影格◆、變速、音訊、濾鏡滑桿、文字樣式） |
-| `js/export.js` | 雙模式匯出：優先 **WebCodecs 離線快速匯出**（逐幀 seek→合成→VideoEncoder H.264 + OfflineAudioContext 混音→AudioEncoder AAC/Opus + mp4-muxer 封裝，無需播放）；不支援時退回 MediaRecorder 即時錄製。mp4-muxer 走 jsdelivr CDN（index.html），離線/載入失敗自動退回即時錄製 |
+| `js/panels.js` | 左側（文字預設/emoji 貼圖/濾鏡預設/轉場卡片/**⚙️設定**）＋右側屬性面板（變換+關鍵影格◆、變速、音訊、濾鏡滑桿、文字樣式）；「文字」面板的 SRT 匯入按鈕與**🤖 語音轉字幕**按鈕（呼叫 `VE.transcribeSpeech()` 再交給 `VE.addTranscriptSegments()`）——**API 金鑰輸入框放在「⚙️設定」分頁、按鈕與結果訊息留在「文字」分頁**（兩個 DOM 元素分屬不同 `.panel`，JS 用同一組 id 直接互相取值，不受目前顯示哪個分頁影響） |
+| `js/export.js` | 雙模式匯出：優先 **WebCodecs 離線快速匯出**（逐幀 seek→合成→VideoEncoder H.264 + OfflineAudioContext 混音→AudioEncoder AAC/Opus + mp4-muxer 封裝，無需播放）；不支援時退回 MediaRecorder 即時錄製。mp4-muxer 走 jsdelivr CDN（index.html），離線/載入失敗自動退回即時錄製。**附加匯出（選用勾選框）**：同時輸出字幕 `.srt`（收集所有 `type:'text'` 片段依 `start` 排序，純字串組裝，不需額外套件）與音軌 `.mp3`（重用 `renderAudio()` 的 OfflineAudioContext 混音結果，餵給 lamejs 逐 1152-sample frame 編碼；lamejs 走 CDN，同樣離線/載入失敗只會讓該選項失敗、不影響影片本身匯出）。兩者都在 `finishDownload()` 觸發視訊下載後才附加執行，沒有可匯出內容（無文字片段／無音軌）時各自顯示 toast 略過，不會擋住主要的影片匯出。**`VE.transcribeSpeech(apiKey, onProgress)`**：語音轉字幕的核心，重用同一套 `renderAudio()`＋`encodeMP3Blob()` 混音管線把時間軸現有聲音編碼成 mp3 轉 base64，送 **Gemini**（`gemini-3.5-flash`，`generateContent` + `inline_data` 音訊 part，header `x-goog-api-key`）並在提示詞要求回傳含時間戳記的 JSON 陣列，用正規表示式從回應文字裡截出 `[...]` 再 `JSON.parse`，回傳 `[{start,end,text}]`；只負責「聲音變文字」，不碰時間軸狀態（新增片段的部分交給 `media.js` 的 `VE.addTranscriptSegments`）。金鑰存 localStorage（key `video-editor-gemini-key`），單檔上限 15MB（base64 會膨脹約 1.33 倍，故比 Whisper 版本的 25MB 門檻更保守）超過會丟錯誤訊息。**2026-07-26 由 OpenAI Whisper 改為 Gemini**（使用者指定），Gemini 的時間戳記是模型自行估算、精確度不如 Whisper 原生對齊，這是換供應商的已知取捨，manual.html 已加註提醒使用者手動核對時間點 |
 | `js/main.js` | 啟動、頂部工具列、鍵盤快捷鍵 |
 
 ## 資料模型重點
@@ -46,6 +46,7 @@
 - 快速匯出需要 WebCodecs（Chrome/Edge）＋ CDN 載入 mp4-muxer；兩者缺一自動退回即時錄製（耗時＝影片長度）。快速匯出中音訊的曲線變速以平均速率近似。
 - MediaRecorder 產生的 webm 當作素材再匯入時 seek 精度差（無 cue index）；一般 mp4 素材無此問題。
 - 變速曲線以動態 `playbackRate` 近似，音調隨速度改變；分割帶曲線的片段會重設為等速。
+- 「🤖 語音轉字幕」需要使用者自備 **Gemini API 金鑰**（左側「⚙️設定」分頁填入，Google AI Studio 有免費額度），且需要網路連線；混音後的音訊超過 15MB 會直接失敗，需縮短時間軸長度分段辨識。時間戳記是 Gemini 自行估算，不像專門的語音辨識服務有精確對齊，生成後建議手動核對每句字幕的時間點。
 
 ## 安裝程式（MrVideo/）
 
@@ -59,3 +60,7 @@
 ## 驗證方式
 
 `node --check js/*.js` 檢查語法；用 Playwright / Preview 開啟 `http://localhost:8766/index.html`，可在 console 以 `VE.importFiles([File])` 程式化匯入合成素材做端到端測試（見 git/對話紀錄中的煙霧測試腳本模式）。
+
+## 課程教學版（mrvideo_s/）
+
+子資料夾 `mrvideo_s/` 是給學員使用的教學版：功能與根目錄版本相同，但**整個工具需先輸入「課程授權序號」並按「確認」驗證通過才能使用**（全螢幕鎖定畫面，套用 `member-license-gate` skill，比照 `sbir-generator/sbir-gen-s`、`icap-generator/icap_s` 的做法，但這裡是鎖整個工具而非單一功能）。序號自第一次驗證起提供 4 個月使用期限，透過獨立的 Google Apps Script／Google Sheet 檢查。詳見 `mrvideo_s/CLAUDE.md`。**這是獨立複製的 `index.html`／`css`／`js`，不是共用檔案**——根目錄版本異動時（含這次修掉的音訊交界喀聲問題）不會自動同步過去，需要時手動套用。

@@ -43,17 +43,191 @@
     return null;
   }
 
-  function finishDownload(blob, ext) {
+  function downloadBlob(blob, filename) {
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = (VE.state.project.name || '影片') + '_' + new Date().toISOString().slice(0, 10) + ext;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  }
+
+  function finishDownload(blob, ext) {
+    downloadBlob(blob, (VE.state.project.name || '影片') + '_' + new Date().toISOString().slice(0, 10) + ext);
     setStatus('完成！已開始下載（' + (blob.size / 1048576).toFixed(1) + ' MB）', 100);
     VE.toast('匯出完成');
+    exportExtras();
     setTimeout(function () { els.modal.classList.add('hidden'); }, 1800);
   }
+
+  /* ══ 附加匯出：字幕 (.srt) ／音軌 (.mp3) ══ */
+
+  function exportExtras() {
+    if (els.chkSrt && els.chkSrt.checked) exportSRT();
+    if (els.chkMp3 && els.chkMp3.checked) {
+      exportMP3().catch(function (e) { VE.toast('MP3 匯出失敗：' + e.message); });
+    }
+  }
+
+  function srtTime(t) {
+    var ms = Math.max(0, Math.round(t * 1000));
+    var h = Math.floor(ms / 3600000); ms -= h * 3600000;
+    var m = Math.floor(ms / 60000); ms -= m * 60000;
+    var s = Math.floor(ms / 1000); ms -= s * 1000;
+    function pad(n, l) { return String(n).padStart(l || 2, '0'); }
+    return pad(h) + ':' + pad(m) + ':' + pad(s) + ',' + pad(ms, 3);
+  }
+
+  function collectTextClips() {
+    var items = [];
+    VE.state.project.tracks.forEach(function (tr) {
+      tr.clips.forEach(function (c) {
+        if (c.type === 'text' && c.text && String(c.text.content || '').trim()) {
+          items.push({ start: c.start, end: c.start + c.duration, text: c.text.content });
+        }
+      });
+    });
+    items.sort(function (a, b) { return a.start - b.start; });
+    return items;
+  }
+
+  function buildSRT(items) {
+    return items.map(function (it, i) {
+      return (i + 1) + '\n' + srtTime(it.start) + ' --> ' + srtTime(it.end) + '\n' + it.text + '\n';
+    }).join('\n');
+  }
+
+  function exportSRT() {
+    var items = collectTextClips();
+    if (!items.length) { VE.toast('沒有文字／字幕片段可匯出成 .srt'); return; }
+    var blob = new Blob([buildSRT(items)], { type: 'text/plain;charset=utf-8' });
+    downloadBlob(blob, (VE.state.project.name || '影片') + '_字幕.srt');
+  }
+
+  function floatTo16(f) {
+    var buf = new Int16Array(f.length);
+    for (var i = 0; i < f.length; i++) {
+      var s = Math.max(-1, Math.min(1, f[i]));
+      buf[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return buf;
+  }
+
+  /** AudioBuffer → MP3 Blob（供匯出音軌與語音辨識共用），需要先載入 lamejs */
+  function encodeMP3Blob(rendered, SR) {
+    var ch0 = rendered.getChannelData(0);
+    var ch1 = rendered.numberOfChannels > 1 ? rendered.getChannelData(1) : ch0;
+    var encoder = new lamejs.Mp3Encoder(2, SR, 128);
+    var CHUNK = 1152, L = rendered.length;
+    var chunks = [];
+    for (var off = 0; off < L; off += CHUNK) {
+      var n = Math.min(CHUNK, L - off);
+      var enc = encoder.encodeBuffer(floatTo16(ch0.subarray(off, off + n)), floatTo16(ch1.subarray(off, off + n)));
+      if (enc.length) chunks.push(enc);
+    }
+    var end = encoder.flush();
+    if (end.length) chunks.push(end);
+    return new Blob(chunks, { type: 'audio/mp3' });
+  }
+
+  /** 蒐集目前時間軸上所有會發出聲音的片段（供匯出音軌／語音辨識共用） */
+  function collectAudibleClips() {
+    var audioClips = [];
+    VE.state.project.tracks.forEach(function (tr) {
+      if (tr.muted) return;
+      tr.clips.forEach(function (c) {
+        if ((c.type === 'audio' || c.type === 'video') && !c.muted && c.volume > 0) {
+          var m = VE.state.media[c.mediaId];
+          if (m && m.url) audioClips.push({ clip: c, media: m });
+        }
+      });
+    });
+    return audioClips;
+  }
+
+  async function exportMP3() {
+    if (typeof lamejs === 'undefined') throw new Error('MP3 編碼器載入失敗，請檢查網路連線後重新整理頁面');
+    var p = VE.state.project, D = VE.projectDuration();
+    var audioClips = collectAudibleClips();
+    if (!audioClips.length) throw new Error('沒有可匯出的音軌');
+    var SR = 48000;
+    var rendered = await renderAudio(audioClips, D, SR);
+    downloadBlob(encodeMP3Blob(rendered, SR), (p.name || '影片') + '_音軌.mp3');
+  }
+
+  var GEMINI_MODEL = 'gemini-3.5-flash';
+
+  /** Blob → base64 字串（供 Gemini inline_data 使用，分塊轉換避免大檔案時 apply() 爆堆疊） */
+  function blobToBase64(blob) {
+    return blob.arrayBuffer().then(function (buf) {
+      var bytes = new Uint8Array(buf);
+      var chunk = 0x8000, binary = '';
+      for (var i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    });
+  }
+
+  /* ══ 語音轉字幕（選用，需自備 Gemini API 金鑰） ══
+     混音 → 編碼成 mp3 → 送 Gemini 辨識並要求逐句附時間戳記 → 回傳 [{start,end,text}]
+     由呼叫端（panels.js）負責把結果交給 VE.addTranscriptSegments() 生成文字片段，
+     這裡只做「聲音變文字」，不碰時間軸狀態。
+     注意：Gemini 是通用多模態模型，時間戳記為模型自行估算，精確度不如專門的語音辨識服務，
+     生成後建議手動核對每句的時間點。 */
+  VE.transcribeSpeech = async function (apiKey, onProgress) {
+    if (typeof lamejs === 'undefined') throw new Error('MP3 編碼器載入失敗，請檢查網路連線後重新整理頁面');
+    if (!apiKey) throw new Error('請先在左側「⚙️設定」填入 Gemini API 金鑰');
+    var D = VE.projectDuration();
+    var audioClips = collectAudibleClips();
+    if (!audioClips.length) throw new Error('時間軸上沒有可辨識的音訊');
+
+    if (onProgress) onProgress('混音中…');
+    var SR = 44100;
+    var rendered = await renderAudio(audioClips, D, SR);
+    var blob = encodeMP3Blob(rendered, SR);
+    if (blob.size > 15 * 1024 * 1024) {
+      throw new Error('混音後的音訊約 ' + (blob.size / 1048576).toFixed(0) + 'MB，超過辨識上限（15MB），請縮短時間軸長度');
+    }
+
+    if (onProgress) onProgress('轉換音訊格式中…');
+    var base64 = await blobToBase64(blob);
+
+    if (onProgress) onProgress('上傳辨識中（依片長可能需要數十秒）…');
+    var prompt = '請將這段音訊裡的講話內容逐句轉錄成繁體中文文字，並標出每一句相對音訊開頭的開始與結束秒數（數字，可含小數）。' +
+      '只回傳一個 JSON 陣列，每個元素格式為 {"start":數字,"end":數字,"text":"文字"}，依時間先後排序，不要任何其他文字、說明或 markdown 標記。' +
+      '如果完全沒有講話內容，回傳空陣列 []。';
+    var resp;
+    try {
+      resp = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + GEMINI_MODEL + ':generateContent', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'audio/mp3', data: base64 } }] }]
+        })
+      });
+    } catch (e) {
+      throw new Error('無法連線至 Gemini，請檢查網路連線');
+    }
+    if (!resp.ok) {
+      var msg = resp.status;
+      try { var errBody = await resp.json(); msg = (errBody.error && errBody.error.message) || msg; } catch (e) {}
+      throw new Error('辨識失敗（' + msg + '）');
+    }
+    var data = await resp.json();
+    var text = ((((data.candidates || [])[0] || {}).content || {}).parts || [])
+      .map(function (p) { return p.text || ''; }).join('');
+    var m = text.match(/\[[\s\S]*\]/);
+    if (!m) throw new Error('Gemini 回應中找不到辨識結果');
+    var raw;
+    try { raw = JSON.parse(m[0]); } catch (e) { throw new Error('Gemini 回應格式無法解析'); }
+    var segments = raw.map(function (s) {
+      return { start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text || '').trim() };
+    }).filter(function (s) { return s.text && s.end > s.start; });
+    if (!segments.length) throw new Error('沒有辨識到任何講話內容');
+    segments.sort(function (a, b) { return a.start - b.start; });
+    return segments;
+  };
 
   VE.initExport = function () {
     els.modal = document.getElementById('exportModal');
@@ -62,6 +236,8 @@
     els.status = document.getElementById('exportStatus');
     els.start = document.getElementById('btnExportStart');
     els.cancel = document.getElementById('btnExportCancel');
+    els.chkSrt = document.getElementById('chkExportSrt');
+    els.chkMp3 = document.getElementById('chkExportMp3');
 
     document.getElementById('btnExport').addEventListener('click', openModal);
     els.start.addEventListener('click', startExport);
@@ -132,6 +308,8 @@
     return decodeCache[m.id];
   }
 
+  var ANTI_CLICK = 0.005;   // 片段交界最短淡入/淡出（秒），避免無淡入淡出設定時因音量瞬變產生喀聲
+
   /** 以 OfflineAudioContext 混出整條音軌（含音量/淡入淡出/變速） */
   function renderAudio(items, D, SR) {
     var ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(D * SR)), SR);
@@ -144,12 +322,12 @@
         var g = ctx.createGain();
         var v = VE.clamp(clip.volume, 0, 2);
         var st = Math.max(0, clip.start), en = clip.start + clip.duration;
-        g.gain.setValueAtTime(clip.fadeIn > 0 ? 0 : v, st);
-        if (clip.fadeIn > 0) g.gain.linearRampToValueAtTime(v, st + Math.min(clip.fadeIn, clip.duration));
-        if (clip.fadeOut > 0) {
-          g.gain.setValueAtTime(v, Math.max(st, en - clip.fadeOut));
-          g.gain.linearRampToValueAtTime(0, en);
-        }
+        var fi = Math.min(Math.max(clip.fadeIn, ANTI_CLICK), clip.duration / 2);
+        var fo = Math.min(Math.max(clip.fadeOut, ANTI_CLICK), clip.duration / 2);
+        g.gain.setValueAtTime(0, st);
+        g.gain.linearRampToValueAtTime(v, st + fi);
+        g.gain.setValueAtTime(v, Math.max(st + fi, en - fo));
+        g.gain.linearRampToValueAtTime(0, en);
         src.connect(g);
         g.connect(ctx.destination);
         var off = VE.clamp(clip.in, 0, buf.duration);

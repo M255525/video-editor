@@ -64,6 +64,36 @@
       srtInput.value = '';
     });
 
+    /* 語音轉字幕（選用，需自備 Gemini API 金鑰；金鑰輸入框在左側「⚙️設定」分頁，按鈕與結果在「🅣文字」分頁） */
+    var asrKeyInput = document.getElementById('asrApiKey');
+    var asrBtn = document.getElementById('btnAsr');
+    var asrMsg = document.getElementById('asrMsg');
+    var asrMsgDefault = asrMsg.textContent;
+    asrKeyInput.value = localStorage.getItem('video-editor-gemini-key') || '';
+    asrKeyInput.addEventListener('change', function () {
+      localStorage.setItem('video-editor-gemini-key', asrKeyInput.value.trim());
+    });
+    asrBtn.addEventListener('click', function () {
+      var key = asrKeyInput.value.trim();
+      if (!key) { asrMsg.textContent = '✗ 請先在左側「⚙️設定」填入 Gemini API 金鑰'; return; }
+      localStorage.setItem('video-editor-gemini-key', key);
+      asrBtn.disabled = true;
+      asrMsg.textContent = '準備中…';
+      VE.transcribeSpeech(key, function (m) { asrMsg.textContent = m; })
+        .then(function (segments) {
+          var n = VE.addTranscriptSegments(segments);
+          asrMsg.textContent = '✓ 已辨識並新增 ' + n + ' 句字幕';
+          VE.toast('語音轉字幕完成，共 ' + n + ' 句');
+        })
+        .catch(function (e) {
+          asrMsg.textContent = '✗ ' + e.message;
+        })
+        .finally(function () {
+          asrBtn.disabled = false;
+          setTimeout(function () { asrMsg.textContent = asrMsgDefault; }, 6000);
+        });
+    });
+
     /* 貼圖 */
     var sg = document.getElementById('stickerGrid');
     STICKERS.forEach(function (emo) {

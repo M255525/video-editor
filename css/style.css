@@ -206,6 +206,7 @@ body[data-drag-type="audio"] .track-row[data-track-type="audio"]{
 #exportProgress{height:100%;width:0;background:var(--accent);transition:width .3s}
 .exp-status{font-size:12px;color:var(--dim);margin-bottom:14px}
 .modal-btns{display:flex;gap:10px;justify-content:flex-end}
+.exp-extra{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
 .exp-note{font-size:11px;color:var(--dim);margin-top:14px;line-height:1.7;border-top:1px solid var(--border);padding-top:10px}
 
 /* ═══ 頁尾警語 ═══ */

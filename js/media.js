@@ -87,18 +87,25 @@
     return cues;
   }
 
+  /** 找到（或建立）專用的「字幕」疊加軌，供 SRT 匯入／語音辨識共用 */
+  function getOrCreateSubtitleTrack() {
+    var p = VE.state.project;
+    var track = null;
+    p.tracks.forEach(function (tr) { if (tr.type === 'overlay' && tr.name === '字幕') track = tr; });
+    if (!track) {
+      track = VE.newTrack('overlay', '字幕');
+      p.tracks.unshift(track);
+    }
+    return track;
+  }
+
   /** 匯入字幕檔：解析後依時間生成文字片段，放在專用「字幕」疊加軌 */
   VE.importSRT = function (file) {
     return file.text().then(function (txt) {
       var cues = parseSRT(txt);
       if (!cues.length) { VE.toast('無法解析字幕檔：' + file.name); return; }
       var p = VE.state.project;
-      var track = null;
-      p.tracks.forEach(function (tr) { if (tr.type === 'overlay' && tr.name === '字幕') track = tr; });
-      if (!track) {
-        track = VE.newTrack('overlay', '字幕');
-        p.tracks.unshift(track);
-      }
+      var track = getOrCreateSubtitleTrack();
       cues.forEach(function (cue) {
         var clip = VE.newClip({
           type: 'text', start: cue.start,
@@ -114,6 +121,26 @@
     }).catch(function (e) {
       VE.toast('讀取字幕檔失敗：' + e.message);
     });
+  };
+
+  /** 把語音辨識結果（[{start,end,text}]）生成文字片段，放在專用「字幕」疊加軌
+      （與 importSRT 共用同一條軌道慣例，供 export.js 的 VE.transcribeSpeech 呼叫端使用） */
+  VE.addTranscriptSegments = function (segments) {
+    if (!segments || !segments.length) return 0;
+    var p = VE.state.project;
+    var track = getOrCreateSubtitleTrack();
+    segments.forEach(function (seg) {
+      var clip = VE.newClip({
+        type: 'text', start: seg.start,
+        duration: Math.max(0.2, seg.end - seg.start),
+        content: seg.text, size: 44
+      });
+      clip.transform.y = p.height * 0.38;
+      track.clips.push(clip);
+    });
+    VE.commit();
+    VE.refreshAll();
+    return segments.length;
   };
 
   /** 匯入 File 陣列（input / 拖放 / 測試皆走此入口） */
