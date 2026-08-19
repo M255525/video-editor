@@ -1,20 +1,20 @@
-/* license-gate.js — 課程教學版序號授權閘門
-   獨立於 window.VE 之外運作：頁面載入時預設鎖定（全畫面遮罩），
-   序號驗證通過才會隱藏遮罩、放行整個工具。
-   部署 Apps Script 後把取得的網址填入下面的 LICENSE_CHECK_URL。 */
-(function () {
+/* license-gate.js — 課程教學版「語音轉字幕」序號授權
+   跟原本鎖整個工具的做法不同：這裡只是頂部一列 banner（#licenseBar），
+   不會擋住剪輯/匯出等其他功能。VE.runLicenseCheck() 供 panels.js 在使用者
+   按下「🤖 辨識全片講話並生成字幕」時即時呼叫重新驗證（不做本機快取信任），
+   確保序號逾期後即使先前驗證過也無法再用該功能。
+   部署 Apps Script 後把取得的網址填入下面的 LICENSE_CHECK_URL（與舊版共用同一支 Code.gs）。 */
+window.VE = window.VE || {};
+(function (VE) {
   'use strict';
 
   var LICENSE_CHECK_URL = "https://script.google.com/macros/s/AKfycbzcaiXxjd8ENqd5aXLqX2Z_ZIhTUlHuyKIJKzyz43DnK1Yu1tn-N50cvuNKhz24RSEA/exec";
   var STORAGE_KEY = 'mrvideoSSerial';
-  var RECHECK_MS = 20 * 60 * 1000;   // 每 20 分鐘背景重新驗證一次，逾期會重新鎖定畫面
 
-  var gate = document.getElementById('licenseGate');
-  var input = document.getElementById('gateSerial');
-  var toggleBtn = document.getElementById('btnGateToggle');
-  var confirmBtn = document.getElementById('btnGateConfirm');
-  var statusEl = document.getElementById('gateStatus');
-  var miniEl = document.getElementById('gateStatusMini');
+  var input = document.getElementById('licenseSerial');
+  var toggleBtn = document.getElementById('btnLicenseToggle');
+  var checkBtn = document.getElementById('btnLicenseCheck');
+  var statusEl = document.getElementById('licenseStatus');
 
   function loadSerial() { return localStorage.getItem(STORAGE_KEY) || ''; }
   function saveSerial(s) { localStorage.setItem(STORAGE_KEY, s); }
@@ -53,67 +53,54 @@
     return '剩餘 ' + Math.max(days, 0) + ' 天可用（至 ' + expireStr + '）';
   }
 
-  function unlock(license) {
-    var label = fmtDays(license) || '序號有效';
-    statusEl.className = 'gate-status ok';
-    statusEl.textContent = '✓ ' + label;
-    gate.classList.add('hidden');
-    if (miniEl) {
-      miniEl.textContent = '🔑 ' + label;
-      miniEl.className = 'footer-credit gate-mini';
-    }
+  function labelFor(license) {
+    if (license.valid) return fmtDays(license) || '序號有效';
+    return REASON_LABEL[license.reason] || license.message || '授權序號驗證失敗';
   }
 
-  function lock(reasonText) {
-    statusEl.className = 'gate-status bad';
-    statusEl.textContent = '✗ ' + reasonText;
-    gate.classList.remove('hidden');
-    if (miniEl) {
-      miniEl.textContent = '🔒 授權已失效，請重新驗證';
-      miniEl.className = 'footer-credit gate-mini bad';
+  function render(license) {
+    if (!statusEl) return;
+    if (license.valid == null) {
+      statusEl.className = 'lic-status pending';
+      statusEl.textContent = license.label;
+      return;
     }
+    statusEl.className = 'lic-status ' + (license.valid ? 'ok' : 'bad');
+    statusEl.textContent = (license.valid ? '✓ ' : '✗ ') + license.label;
   }
 
-  async function runCheck(serial, opts) {
+  /** 即時重新驗證目前存的序號（不信任本機快取），回傳正規化 {valid, reason, message?, expiresAt?, label}。
+      opts.silent：跳過「驗證中…」的過渡文字，但最終結果一律會更新 banner。 */
+  VE.runLicenseCheck = async function (opts) {
     opts = opts || {};
+    var serial = loadSerial();
+    var license;
     if (!serial) {
-      statusEl.className = 'gate-status bad';
-      statusEl.textContent = REASON_LABEL.missing_serial;
-      return { valid: false, reason: 'missing_serial' };
+      license = { valid: false, reason: 'missing_serial' };
+    } else {
+      if (!opts.silent) render({ valid: null, label: '驗證中…' });
+      try {
+        license = await checkLicense(serial);
+      } catch (err) {
+        license = { valid: false, reason: 'network_error', message: err.message };
+      }
     }
-    if (!opts.silent) {
-      statusEl.className = 'gate-status pending';
-      statusEl.textContent = '驗證中…';
-    }
-    try {
-      var license = await checkLicense(serial);
-      if (license.valid) unlock(license);
-      else lock(REASON_LABEL[license.reason] || license.message || '授權序號驗證失敗');
-      return license;
-    } catch (err) {
-      lock(err.message);
-      return { valid: false, reason: 'network_error', message: err.message };
-    }
-  }
+    license.label = labelFor(license);
+    render(license);
+    return license;
+  };
 
-  confirmBtn.addEventListener('click', function () {
-    var serial = input.value.trim();
-    saveSerial(serial);
-    runCheck(serial);
+  checkBtn.addEventListener('click', function () {
+    saveSerial(input.value.trim());
+    VE.runLicenseCheck();
   });
   input.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); confirmBtn.click(); }
+    if (e.key === 'Enter') { e.preventDefault(); checkBtn.click(); }
   });
   toggleBtn.addEventListener('click', function () {
     input.type = input.type === 'password' ? 'text' : 'password';
   });
 
   input.value = loadSerial();
-  if (input.value) runCheck(input.value, { silent: true });
-
-  /* 背景定期重新驗證：不永久快取「已通過」狀態，逾期會重新鎖定畫面 */
-  setInterval(function () {
-    var serial = loadSerial();
-    if (serial) runCheck(serial, { silent: true });
-  }, RECHECK_MS);
-})();
+  if (input.value) VE.runLicenseCheck({ silent: true });
+})(window.VE);

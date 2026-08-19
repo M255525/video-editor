@@ -231,19 +231,11 @@ body[data-drag-type="audio"] .track-row[data-track-type="audio"]{
 ::-webkit-scrollbar-thumb{background:var(--panel3);border-radius:5px}
 ::-webkit-scrollbar-track{background:transparent}
 
-/* ═══ 課程授權序號閘門（整個工具需先驗證通過才能使用） ═══ */
-#licenseGate{position:fixed;inset:0;background:rgba(5,7,12,.94);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px}
-.gate-box{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:32px;width:420px;max-width:92vw;text-align:center}
-.gate-logo{font-size:22px;font-weight:bold;margin-bottom:8px}
-.gate-logo span{color:var(--accent)}
-.gate-desc{font-size:12.5px;color:var(--dim);margin-bottom:20px;line-height:1.7}
-.gate-row{display:flex;gap:8px;margin-bottom:14px}
-.gate-row input{flex:1;min-width:0;background:var(--panel);border:1px solid var(--border);color:var(--text);padding:10px 12px;border-radius:8px;font-size:14px;font-family:inherit}
-.gate-row button{flex:0 0 auto;padding:10px 12px;border-radius:8px}
-.gate-status{display:block;font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:8px;background:var(--panel);color:var(--dim)}
-.gate-status.ok{background:rgba(56,189,248,.12);color:var(--accent)}
-.gate-status.warn{background:#3a2f10;color:#fbbf24}
-.gate-status.bad{background:rgba(248,113,113,.12);color:var(--danger)}
-.gate-status.pending{opacity:.85}
-.gate-mini{color:var(--dim)}
-.gate-mini.bad{color:var(--danger);font-weight:bold}
+/* ═══ 課程授權序號列（只鎖「🤖 語音轉字幕」功能，不擋其他操作） ═══ */
+#licenseBar{display:flex;align-items:center;gap:8px;padding:6px 14px;background:var(--panel);border-bottom:1px solid var(--border);flex:0 0 auto;font-size:12.5px}
+.lic-label{color:var(--dim);white-space:nowrap}
+#licenseSerial{flex:0 0 auto;width:200px;min-width:0;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:12.5px;font-family:inherit}
+.lic-status{padding:3px 10px;border-radius:6px;background:var(--panel2);color:var(--dim);font-weight:600;white-space:nowrap}
+.lic-status.ok{background:rgba(56,189,248,.12);color:var(--accent)}
+.lic-status.pending{opacity:.85}
+.lic-status.bad{background:rgba(248,113,113,.12);color:var(--danger)}

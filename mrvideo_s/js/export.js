@@ -169,25 +169,16 @@
     });
   }
 
-  /* ══ 語音轉字幕（選用，需自備 Gemini API 金鑰） ══
-     混音 → 編碼成 mp3 → 送 Gemini 辨識並要求逐句附時間戳記 → 回傳 [{start,end,text}]
-     由呼叫端（panels.js）負責把結果交給 VE.addTranscriptSegments() 生成文字片段，
-     這裡只做「聲音變文字」，不碰時間軸狀態。
-     注意：Gemini 是通用多模態模型，時間戳記為模型自行估算，精確度不如專門的語音辨識服務，
-     生成後建議手動核對每句的時間點。 */
-  VE.transcribeSpeech = async function (apiKey, onProgress) {
-    if (typeof lamejs === 'undefined') throw new Error('MP3 編碼器載入失敗，請檢查網路連線後重新整理頁面');
-    if (!apiKey) throw new Error('請先在左側「⚙️設定」填入 Gemini API 金鑰');
-    var D = VE.projectDuration();
-    var audioClips = collectAudibleClips();
-    if (!audioClips.length) throw new Error('時間軸上沒有可辨識的音訊');
-
-    if (onProgress) onProgress('混音中…');
-    var SR = 44100;
-    var rendered = await renderAudio(audioClips, D, SR);
-    var blob = encodeMP3Blob(rendered, SR);
+  /* ══ 語音轉字幕（選用，需自備 API 金鑰＋課程授權序號） ══
+     混音 → 編碼成 mp3 → 送辨識服務並取得逐句時間戳記 → 回傳 [{start,end,text}]
+     由呼叫端（panels.js）負責先驗證課程授權序號、再把結果交給 VE.addTranscriptSegments()
+     生成文字片段，這裡只做「聲音變文字」，不碰時間軸狀態、不碰序號驗證。
+     支援兩個服務商（Claude 目前 API 不支援音訊輸入、OpenRouter 各模型音訊支援不一，故不提供）：
+     - Gemini：多模態模型，時間戳記為模型自行估算，精確度不如專門的語音辨識服務，上限 15MB（base64 膨脹更保守）。
+     - OpenAI Whisper：專用語音辨識端點，回傳原生對齊的逐句時間戳記（verbose_json 的 segments），精確度較高，上限 25MB（二進位直傳無膨脹）。 */
+  async function transcribeWithGemini(apiKey, blob, onProgress) {
     if (blob.size > 15 * 1024 * 1024) {
-      throw new Error('混音後的音訊約 ' + (blob.size / 1048576).toFixed(0) + 'MB，超過辨識上限（15MB），請縮短時間軸長度');
+      throw new Error('混音後的音訊約 ' + (blob.size / 1048576).toFixed(0) + 'MB，超過 Gemini 辨識上限（15MB），請縮短時間軸長度，或改用 OpenAI Whisper（上限 25MB）');
     }
 
     if (onProgress) onProgress('轉換音訊格式中…');
@@ -227,6 +218,55 @@
     if (!segments.length) throw new Error('沒有辨識到任何講話內容');
     segments.sort(function (a, b) { return a.start - b.start; });
     return segments;
+  }
+
+  async function transcribeWithOpenAI(apiKey, blob, onProgress) {
+    if (blob.size > 25 * 1024 * 1024) {
+      throw new Error('混音後的音訊約 ' + (blob.size / 1048576).toFixed(0) + 'MB，超過 OpenAI Whisper 辨識上限（25MB），請縮短時間軸長度');
+    }
+
+    if (onProgress) onProgress('上傳辨識中（依片長可能需要數十秒）…');
+    var form = new FormData();
+    form.append('file', blob, 'audio.mp3');
+    form.append('model', 'whisper-1');
+    form.append('response_format', 'verbose_json');
+    var resp;
+    try {
+      resp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + apiKey },
+        body: form
+      });
+    } catch (e) {
+      throw new Error('無法連線至 OpenAI，請檢查網路連線');
+    }
+    if (!resp.ok) {
+      var msg = resp.status;
+      try { var errBody = await resp.json(); msg = (errBody.error && errBody.error.message) || msg; } catch (e) {}
+      throw new Error('辨識失敗（' + msg + '）');
+    }
+    var data = await resp.json();
+    var segments = (data.segments || []).map(function (s) {
+      return { start: Number(s.start) || 0, end: Number(s.end) || 0, text: String(s.text || '').trim() };
+    }).filter(function (s) { return s.text && s.end > s.start; });
+    if (!segments.length) throw new Error('沒有辨識到任何講話內容');
+    segments.sort(function (a, b) { return a.start - b.start; });
+    return segments;
+  }
+
+  VE.transcribeSpeech = async function (provider, apiKey, onProgress) {
+    if (typeof lamejs === 'undefined') throw new Error('MP3 編碼器載入失敗，請檢查網路連線後重新整理頁面');
+    if (!apiKey) throw new Error('請先在左側「⚙️設定」填入 API 金鑰');
+    var D = VE.projectDuration();
+    var audioClips = collectAudibleClips();
+    if (!audioClips.length) throw new Error('時間軸上沒有可辨識的音訊');
+
+    if (onProgress) onProgress('混音中…');
+    var SR = 44100;
+    var rendered = await renderAudio(audioClips, D, SR);
+    var blob = encodeMP3Blob(rendered, SR);
+
+    return provider === 'openai' ? transcribeWithOpenAI(apiKey, blob, onProgress) : transcribeWithGemini(apiKey, blob, onProgress);
   };
 
   VE.initExport = function () {

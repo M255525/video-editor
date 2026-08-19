@@ -64,34 +64,69 @@
       srtInput.value = '';
     });
 
-    /* 語音轉字幕（選用，需自備 Gemini API 金鑰；金鑰輸入框在左側「⚙️設定」分頁，按鈕與結果在「🅣文字」分頁） */
-    var asrKeyInput = document.getElementById('asrApiKey');
+    /* 語音轉字幕（需自備所選服務商 API 金鑰＋頂部課程授權序號驗證通過；金鑰與服務商選擇在左側「⚙️設定」分頁，按鈕與結果在「🅣文字」分頁） */
+    var asrProviderSel = document.getElementById('asrProvider');
+    var asrKeyGemini = document.getElementById('asrApiKeyGemini');
+    var asrKeyOpenai = document.getElementById('asrApiKeyOpenai');
     var asrBtn = document.getElementById('btnAsr');
     var asrMsg = document.getElementById('asrMsg');
     var asrMsgDefault = asrMsg.textContent;
-    asrKeyInput.value = localStorage.getItem('video-editor-gemini-key') || '';
-    asrKeyInput.addEventListener('change', function () {
-      localStorage.setItem('video-editor-gemini-key', asrKeyInput.value.trim());
+
+    function currentAsrKeyInput() {
+      return asrProviderSel.value === 'openai' ? asrKeyOpenai : asrKeyGemini;
+    }
+    function syncAsrProviderUI() {
+      var isOpenai = asrProviderSel.value === 'openai';
+      asrKeyGemini.classList.toggle('hidden', isOpenai);
+      asrKeyOpenai.classList.toggle('hidden', !isOpenai);
+    }
+
+    asrProviderSel.value = localStorage.getItem('video-editor-asr-provider') || 'gemini';
+    syncAsrProviderUI();
+    asrProviderSel.addEventListener('change', function () {
+      localStorage.setItem('video-editor-asr-provider', asrProviderSel.value);
+      syncAsrProviderUI();
     });
+
+    asrKeyGemini.value = localStorage.getItem('video-editor-gemini-key') || '';
+    asrKeyGemini.addEventListener('change', function () {
+      localStorage.setItem('video-editor-gemini-key', asrKeyGemini.value.trim());
+    });
+    asrKeyOpenai.value = localStorage.getItem('video-editor-openai-key') || '';
+    asrKeyOpenai.addEventListener('change', function () {
+      localStorage.setItem('video-editor-openai-key', asrKeyOpenai.value.trim());
+    });
+
     asrBtn.addEventListener('click', function () {
-      var key = asrKeyInput.value.trim();
-      if (!key) { asrMsg.textContent = '✗ 請先在左側「⚙️設定」填入 Gemini API 金鑰'; return; }
-      localStorage.setItem('video-editor-gemini-key', key);
+      var provider = asrProviderSel.value;
+      var keyInput = currentAsrKeyInput();
+      var key = keyInput.value.trim();
+      if (!key) { asrMsg.textContent = '✗ 請先在左側「⚙️設定」填入 API 金鑰'; return; }
+      localStorage.setItem(provider === 'openai' ? 'video-editor-openai-key' : 'video-editor-gemini-key', key);
+
       asrBtn.disabled = true;
-      asrMsg.textContent = '準備中…';
-      VE.transcribeSpeech(key, function (m) { asrMsg.textContent = m; })
-        .then(function (segments) {
-          var n = VE.addTranscriptSegments(segments);
-          asrMsg.textContent = '✓ 已辨識並新增 ' + n + ' 句字幕';
-          VE.toast('語音轉字幕完成，共 ' + n + ' 句');
-        })
-        .catch(function (e) {
-          asrMsg.textContent = '✗ ' + e.message;
-        })
-        .finally(function () {
+      asrMsg.textContent = '驗證課程授權序號中…';
+      VE.runLicenseCheck().then(function (license) {
+        if (!license.valid) {
+          asrMsg.textContent = '✗ ' + license.label + '（請至頂部「語音轉字幕課程授權序號」欄位輸入）';
           asrBtn.disabled = false;
-          setTimeout(function () { asrMsg.textContent = asrMsgDefault; }, 6000);
-        });
+          return;
+        }
+        asrMsg.textContent = '準備中…';
+        VE.transcribeSpeech(provider, key, function (m) { asrMsg.textContent = m; })
+          .then(function (segments) {
+            var n = VE.addTranscriptSegments(segments);
+            asrMsg.textContent = '✓ 已辨識並新增 ' + n + ' 句字幕';
+            VE.toast('語音轉字幕完成，共 ' + n + ' 句');
+          })
+          .catch(function (e) {
+            asrMsg.textContent = '✗ ' + e.message;
+          })
+          .finally(function () {
+            asrBtn.disabled = false;
+            setTimeout(function () { asrMsg.textContent = asrMsgDefault; }, 6000);
+          });
+      });
     });
 
     /* 貼圖 */
