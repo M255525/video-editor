@@ -241,7 +241,7 @@
       var clip = VE.clipAt(tr, t);
       if (clip) drawWithTransition(tr, clip, t);
     }
-    if (VE.exporting) drawExportWatermark(W, H);
+    if (VE.exporting && !VE.exportWatermarkOff) drawExportWatermark(W, H);
     /* 暫停時畫選取外框 */
     if (!VE.state.playing && !VE.exporting) {
       var sel = VE.selectedClip();

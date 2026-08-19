@@ -5,6 +5,7 @@
   'use strict';
 
   VE.exporting = false;
+  VE.exportWatermarkOff = false;   // 課程授權序號驗證通過時設為 true，drawExportWatermark() 據此略過浮水印
 
   var els = {}, cancelled = false;
   var recorder = null, chunks = [], recDest = null, progTimer = null;
@@ -309,31 +310,59 @@
       '長度：' + VE.fmtTime(D) + '<br>' +
       (fast
         ? '模式：⚡ 快速匯出 MP4（背景編碼，<b>無需播放</b>，速度快）'
-        : '模式：即時錄製（耗時 ≈ 影片長度）');
+        : '模式：即時錄製（耗時 ≈ 影片長度）') +
+      '<br>浮水印：<span id="wmStatus">檢查課程授權序號中…</span>';
     els.bar.style.width = '0%';
     els.status.textContent = '按「開始匯出」開始。';
     els.start.disabled = false;
     els.modal.classList.remove('hidden');
+    refreshWatermarkStatus();
+  }
+
+  var WM_ON_LABEL = '含「馬克老師AI」浮水印（頂部輸入課程授權序號並驗證通過可移除）';
+  var WM_OFF_LABEL = '✓ 已驗證課程授權序號，匯出不含浮水印';
+
+  /** 即時重新檢查課程授權序號，決定這次匯出要不要加浮水印（跟語音轉字幕一樣，每次都重新驗證、不信任本機快取） */
+  function refreshWatermarkStatus() {
+    VE.exportWatermarkOff = false;   // 驗證確認通過前，保守顯示浮水印
+    var el = document.getElementById('wmStatus');
+    return VE.runLicenseCheck({ silent: true }).then(function (license) {
+      VE.exportWatermarkOff = !!license.valid;
+      if (el) el.textContent = VE.exportWatermarkOff ? WM_OFF_LABEL : WM_ON_LABEL;
+      return VE.exportWatermarkOff;
+    });
   }
 
   function startExport() {
     cancelled = false;
-    if (fastSupported()) {
-      fastExport().catch(function (e) {
+    VE.exporting = true;   // 提前設定，讓「確認課程授權序號」期間按下取消也能被 Cancel 按鈕的既有邏輯正確攔截
+    els.start.disabled = true;
+    setStatus('確認課程授權序號中…', 0);
+    refreshWatermarkStatus().then(function () {
+      if (cancelled) {
         VE.exporting = false;
         els.start.disabled = false;
-        if (cancelled) {
-          setStatus('已取消', 0);
-          els.modal.classList.add('hidden');
-          return;
-        }
-        console.error('fast export failed', e);
-        VE.toast('快速匯出失敗（' + e.message + '），改用即時錄製');
+        setStatus('已取消', 0);
+        els.modal.classList.add('hidden');
+        return;
+      }
+      if (fastSupported()) {
+        fastExport().catch(function (e) {
+          VE.exporting = false;
+          els.start.disabled = false;
+          if (cancelled) {
+            setStatus('已取消', 0);
+            els.modal.classList.add('hidden');
+            return;
+          }
+          console.error('fast export failed', e);
+          VE.toast('快速匯出失敗（' + e.message + '），改用即時錄製');
+          realtimeExport();
+        });
+      } else {
         realtimeExport();
-      });
-    } else {
-      realtimeExport();
-    }
+      }
+    });
   }
 
   /* ══ 方案一：WebCodecs 離線快速匯出（無需播放） ══ */
