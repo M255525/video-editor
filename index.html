@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>影片先生 — 影片編輯器</title>
-<link rel="stylesheet" href="css/style.css?v=5">
+<link rel="stylesheet" href="css/style.css?v=6">
 </head>
 <body>
 <div id="app">
@@ -68,6 +68,7 @@
       <option value="960x960">1:1 方形</option>
     </select>
     <button id="btnNew" class="tb-btn">新專案</button>
+    <button id="btnPreviewFull" class="tb-btn">🎬 完整預覽</button>
     <button id="btnExport" class="tb-btn primary">⬆ 匯出影片</button>
   </header>
 
@@ -129,6 +130,7 @@
     <section id="center">
       <div id="previewWrap">
         <canvas id="previewCanvas"></canvas>
+        <button id="btnExitPreview" class="tb-btn hidden">✕ 結束完整預覽</button>
       </div>
       <div id="transport">
         <span id="timeCur" class="time">00:00.00</span>
@@ -220,6 +222,6 @@
 <script src="js/timeline.js?v=5"></script>
 <script src="js/panels.js?v=5"></script>
 <script src="js/export.js?v=5"></script>
-<script src="js/main.js?v=3"></script>
+<script src="js/main.js?v=4"></script>
 </body>
 </html>

@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="影片先生(教學版)">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 
@@ -85,6 +85,7 @@
       <option value="960x960">1:1 方形</option>
     </select>
     <button id="btnNew" class="tb-btn">新專案</button>
+    <button id="btnPreviewFull" class="tb-btn">🎬 完整預覽</button>
     <button id="btnExport" class="tb-btn primary">⬆ 匯出影片</button>
   </header>
 
@@ -151,6 +152,7 @@
     <section id="center">
       <div id="previewWrap">
         <canvas id="previewCanvas"></canvas>
+        <button id="btnExitPreview" class="tb-btn hidden">✕ 結束完整預覽</button>
       </div>
       <div id="transport">
         <span id="timeCur" class="time">00:00.00</span>
@@ -244,7 +246,7 @@
 <script src="js/timeline.js?v=5"></script>
 <script src="js/panels.js?v=6"></script>
 <script src="js/export.js?v=7"></script>
-<script src="js/main.js?v=3"></script>
+<script src="js/main.js?v=4"></script>
 
 <script>
 /* 加入主畫面（PWA）— 獨立運作，跟頁首跑馬燈／序號授權列／上方 VE 命名空間都無關，重用 VE.toast 顯示提示 */

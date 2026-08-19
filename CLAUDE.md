@@ -43,6 +43,16 @@
 
 `#marqueeBar` 是 `#app`（`height:100vh` flex column）裡的第一個 flex 子項（非 `position:fixed`，避免蓋住 `#topbar`），內容跟 ai-video-studio 系列（主版／`AIvideo_studio` 教學版／`ppt-course-video`）**共用同一個授權伺服器**（`https://script.google.com/macros/s/AKfycbwKX0.../exec`）與同一份跑馬燈 Google Sheet（<https://docs.google.com/spreadsheets/d/1sSBXW2dAc-4u0j21Q72MzNEBIhDccShhr1iJcAdG0UE/edit>）。本專案（根目錄版）沒有序號登入機制，做法是頁面載入時直接 POST 空序號給該網址（`doPost` 不論序號有效與否都會附上 `marquee` 陣列），`localStorage` key `ve_marquee`，每 20 分鐘背景重抓一次；獨立 `<script>` 掛在 `<body>` 開頭、`#app` 裡最前面，跟下方 `VE` 命名空間模組完全無關。改跑馬燈內容直接編輯該份 Sheet 即可，不需要重新部署 Apps Script，四個工具會同時更新。**`mrvideo_s/` 教學版也已同步加上（2026-07-30）**：做法跟根目錄版完全一樣的直接呼叫，**沒有**改成跟 `AIvideo_studio` 一樣「夾帶在序號驗證回應裡」——`mrvideo_s` 有自己獨立的序號驗證 Apps Script（跟這份共用跑馬燈 Sheet 完全無關），改成夾帶做法要另外去改它自己的 `Code.gs` 並重新部署，權衡後選擇直接呼叫共用端點的簡單做法，兩者互不影響。差異只在版面：`mrvideo_s` 的 `#marqueeBar` 放在 `#licenseGate` 全螢幕鎖定遮罩**之後**、`#app` 內部最上方（不是 fixed 蓋在遮罩上面），所以鎖定畫面顯示時跑馬燈是被擋住的，序號驗證通過、遮罩隱藏後才會看到——這是刻意的簡化，不是遺漏。詳見 `mrvideo_s/CLAUDE.md`。
 
+## 完整預覽／劇院模式（2026-08-19 新增）
+
+使用者要求「匯出前想看『最終成品』的完整預覽」——中央畫布原本的即時預覽（▶播放/拖曳時間軸）雖然用的是同一套 `VE.drawFrame()` 合成引擎，但畫面小、又被左右面板與時間軸擠壓，不利於像看片一樣完整走一遍成品。做法：頂部工具列新增「🎬 完整預覽」按鈕（`#btnPreviewFull`，放在「新專案」與「⬆ 匯出影片」之間），`js/main.js` 的 `initTheaterMode()`：
+
+- **進入**：`#app` 加上 `.theater-mode` class（CSS 用這個 class 把 `#left`／`#rzLeft`／`#right`／`#rzRight`／`#rzBottom`／`#bottom` 全部 `display:none`，`#center` 是 flex:1 會自動撐滿剩餘空間，畫布因此自然放大，不需要另外寫縮放邏輯）＋顯示 `#previewWrap` 右上角浮動的「✕ 結束完整預覽」按鈕（`#btnExitPreview`，`position:absolute`）＋`VE.seek(0)` 從頭開始＋`VE.play()`。時間軸是空的（`VE.projectDuration()<=0`）會直接 toast 提示、不進入。
+- **退出**：按「✕ 結束完整預覽」、或鍵盤 `Esc`（`document` 層級的 keydown listener，只在 `.theater-mode` 存在時才處理，不會跟 `initKeyboard()` 既有的其他快捷鍵沖突——`Esc` 目前沒有被別的功能用掉）都會 `VE.pause()`＋移除 `.theater-mode`＋隱藏退出按鈕。
+- **刻意保留可見的部分**：頂部工具列（含 Undo/Redo/匯出按鈕）與底部 `#transport`（播放/上一格/下一格/時間顯示）**不會**被隱藏，只藏「側面板＋時間軸」——因為這兩塊還是有用（可以隨時暫停、微調後再重新完整預覽一次），純粹想要沉浸式體驗才需要藏更多，目前沒有做到「真全螢幕」（Fullscreen API）那麼徹底，是刻意的範圍取捨。
+- 播放到結尾會自然停在最後一幀（沿用 `VE.play()`/`step()` 既有的播放結束邏輯），不會自動退出劇院模式，使用者可以重播或手動離開。
+- 已用 Playwright 端對端驗證：空時間軸擋下＋toast、進入後三個區塊確實隱藏且畫布變大、退出按鈕與 `Esc` 兩種離開方式都正確還原版面並暫停播放。`mrvideo_s` 教學版套用同一套邏輯（含頂部多了 `#licenseBar` 的情況，序號列不受影響維持可見）。
+
 ## 文字安全區域（2026-08-19 新增）
 
 所有文字片段（含手動輸入與語音轉字幕／SRT 匯入自動生成的字幕）渲染時會自動斷行、確保**左右兩側各留畫布寬度 5% 的安全邊界**，不會超出畫布邊緣被裁切——這是使用者發現語音轉字幕生成的長句子會跑出畫面左右邊緣後提出的需求（原本要求「左右各留 2mm」，但畫布是像素單位、沒有實體毫米概念，跟使用者確認後改用「畫布寬度固定比例」的做法，比照影視業常見的「字幕安全區」慣例）。

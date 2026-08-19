@@ -87,6 +87,34 @@
     document.getElementById('btnPlay').addEventListener('click', function () { VE.togglePlay(); });
     document.getElementById('btnPrevFrame').addEventListener('click', function () { VE.stepFrame(-1); });
     document.getElementById('btnNextFrame').addEventListener('click', function () { VE.stepFrame(1); });
+
+    initTheaterMode();
+  }
+
+  /* ── 完整預覽（劇院模式）：匯出前想看完整成品，隱藏側面板/時間軸，畫布放大從頭播放 ── */
+  function initTheaterMode() {
+    var previewBtn = document.getElementById('btnPreviewFull');
+    var exitBtn = document.getElementById('btnExitPreview');
+    if (!previewBtn || !exitBtn) return;
+
+    function enter() {
+      if (VE.projectDuration() <= 0) { VE.toast('時間軸是空的，沒有內容可預覽'); return; }
+      document.getElementById('app').classList.add('theater-mode');
+      exitBtn.classList.remove('hidden');
+      VE.seek(0);
+      VE.play();
+    }
+    function exit() {
+      VE.pause();
+      document.getElementById('app').classList.remove('theater-mode');
+      exitBtn.classList.add('hidden');
+    }
+
+    previewBtn.addEventListener('click', enter);
+    exitBtn.addEventListener('click', exit);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && document.getElementById('app').classList.contains('theater-mode')) exit();
+    });
   }
 
   /* ── 復原/重做按鈕啟用狀態（頂部＋時間軸工具列共 4 顆） ── */
