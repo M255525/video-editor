@@ -339,13 +339,23 @@
   }
 
   /** 把 t 時刻會出現在畫面上的影片元素 seek 到正確幀（含轉場需要的前段凍結幀）。
-      快速匯出（fastExport）逐幀呼叫這個函式，是「匯出閃爍/黑屏」的根源所在，修正時要顧到兩種情況：
-      ① 片段剛匯入還沒在編輯畫面播放/拖曳過，`<video>` 元素是剛建立的、readyState 還是 0（HAVE_NOTHING），
-         舊版邏輯完全不等待就直接讓 drawFrame 畫下去，畫到的是完全沒資料的空畫面 → 黑屏（通常出現在匯出片頭）。
-      ② `seeked` 事件只保證「跳轉這個動作完成」，不保證瀏覽器已經把該時間點的畫面實際解碼完成、
-         可以正確被 drawImage 取用——尤其快速匯出是用程式在極短時間內連續大量 seek，比真人手動拖曳快很多，
-         很容易畫到「還沒解碼完的舊畫面」或半殘幀 → 閃爍。有 requestVideoFrameCallback 的瀏覽器可以用它
-         等到「這一幀真的已經呈現、可以合成」的確切時間點，比 seeked 更可靠。 */
+      快速匯出（fastExport）逐幀呼叫這個函式，是「匯出閃爍/黑屏」的根源所在。
+
+      **這裡的做法幾經調整，記錄一下走過的彎路避免以後重踩**：
+      真正的黑屏成因只有一個——片段剛匯入還沒在編輯畫面播放/拖曳過時，`<video>` 元素是剛建立的、
+      readyState 還是 0（HAVE_NOTHING），舊版邏輯完全不等待就直接讓 drawFrame 畫下去，畫到的是完全
+      沒資料的空畫面。修法很單純：readyState 不足時先等 `loadedmetadata` 再繼續。
+
+      閃爍原本懷疑是「`seeked` 事件只保證跳轉完成、不保證畫面已解碼完可畫」，一度加了
+      `requestVideoFrameCallback` 逐幀核對 `metadata.mediaTime` 才放行——**這個方向被證實是錯的、
+      而且是有害的**：直接用合成的長 GOP 測試影片（ffmpeg 產生、關鍵影格間隔 3 秒）逐一比對「seeked
+      後立刻 drawImage 抓到的顏色」跟「該時間點應有的內容」，結果完全準確，代表 `seeked` 本身在這個
+      情境下就已經可靠、根本不需要 rVFC 這層額外驗證；反而是 rVFC 在**同一個 video 元素被連續大量
+      呼叫**（快速匯出逐幀 seek 正是這個模式）時觀察到不穩定，偶爾整串回呼鏈就不再觸發，導致等待邏輯
+      長時間卡住甚至逼近卡死、匯出速度也被拖慢一個數量級。**因此最終拿掉了 rVFC 這一層**，只留「等
+      loadedmetadata」＋「等 seeked」兩層，各自有獨立逾時保底。如果之後真的還有殘留的閃爍/黑屏，
+      優先方向是查其他成因（轉場交界、多軌同時可見的影片元素、realtimeExport 備援路徑），不要再回頭
+      加 rVFC。 */
   function seekVisualsTo(t) {
     var waits = [];
     VE.state.project.tracks.forEach(function (tr) {
@@ -364,27 +374,15 @@
           var settled = false;
           function finish() { if (!settled) { settled = true; resolve(); } }
 
-          function afterFrameReady() {
-            /* seeked 之後再多等一次「畫面真的呈現」的確認，減少殘影/半殘幀；
-               務必要有逾時保底——rVFC 的回呼是「有新的一幀被呈現時才觸發」，
-               如果目前位置本來就已經是要seek到的幀（沒有實際發生新的呈現事件），
-               回呼可能永遠不會來，沒有逾時保底會整個卡死匯出（已實測踩過這個坑）。 */
-            var frameSettled = false;
-            function frameFinish() { if (!frameSettled) { frameSettled = true; finish(); } }
-            var frameTm = setTimeout(frameFinish, 250);
-            if (typeof el.requestVideoFrameCallback === 'function') {
-              el.requestVideoFrameCallback(function () { clearTimeout(frameTm); frameFinish(); });
-            } else {
-              requestAnimationFrame(function () { clearTimeout(frameTm); frameFinish(); });
-            }
-          }
           function doSeek() {
-            if (Math.abs(el.currentTime - st) <= 0.005) { afterFrameReady(); return; }
-            var tm = setTimeout(finish, 300);
+            if (Math.abs(el.currentTime - st) <= 0.005) { finish(); return; }
+            /* 長 GOP 真實素材 seek 到非關鍵影格位置偶爾需要往前解碼較多幀，比合成測試影片慢，
+               逾時值比原本寬鬆一些；沒有在時限內收到 seeked 也會放行，避免拖垮整個匯出。 */
+            var tm = setTimeout(finish, 700);
             function onSeeked() {
               el.removeEventListener('seeked', onSeeked);
               clearTimeout(tm);
-              afterFrameReady();
+              finish();
             }
             el.addEventListener('seeked', onSeeked);
             try { el.currentTime = st; } catch (e) { finish(); }
