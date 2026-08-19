@@ -354,8 +354,11 @@
     return VE.clamp(v, 0, 2);
   }
 
-  /* ── 媒體元素同步 ── */
-  function syncMedia(t, isPlaying) {
+  /* ── 媒體元素同步 ──
+     waits：選填陣列，傳入時，若這次觸發了 seek，會塞一個「seeked 事件真正完成」的 Promise 進去
+     （而不是直接 fire-and-forget 設定 currentTime），供呼叫端在暫停/單張定格時等待畫面真的就緒後再補畫。
+     播放中（step() 呼叫）不傳這個參數：連續播放時每一幀都會重畫，不需要、也不該為此等待。 */
+  function syncMedia(t, isPlaying, waits) {
     VE.state.project.tracks.forEach(function (track) {
       track.clips.forEach(function (clip) {
         if (clip.type !== 'video' && clip.type !== 'audio') return;
@@ -372,8 +375,40 @@
         var st = VE.sourceTime(clip, t);
         if (m && m.duration) st = VE.clamp(st, 0, Math.max(0, m.duration - 0.05));
         var tol = isPlaying ? 0.25 : 0.03;
-        if (!el.seeking && Math.abs(el.currentTime - st) > tol) {
-          try { el.currentTime = st; } catch (e) {}
+        /* 判斷目前「已經在追的目標」該用什麼當基準：如果上一次呼叫已經送出一個 seek 且還沒完成
+           （el.seeking 為真），要拿「上次要求的目標」（entry.seekTarget）來比較，不能拿 el.currentTime——
+           seeking 期間 el.currentTime 不一定即時反映真正的目標，用它當基準會誤判「已經很接近了」而
+           漏掉這次真正需要的新目標。這是修過的一個坑：舊版用 `!el.seeking && ...` 當條件，意思是
+           「只要正在 seek 中，這次呼叫完全不處理」——時間軸拖曳/快速連續呼叫 VE.seek() 時，第一個
+           seek 還沒完成，後面幾次呼叫全部被這個條件擋掉、連 el.currentTime 都沒有更新到最新目標，
+           最後畫面卡在中途某個目標、跟真正的播放頭位置對不上（使用者回報「往前移動時也會出現黑屏」
+           正是這個成因：拖曳中間某次的 seek 沒真正發生，畫面停在錯誤幀）。
+           現在改成：不管是否正在 seeking，只要目標真的變了（跟「目前追蹤中的目標」或穩定態的
+           el.currentTime 差距超過容差），就重新指定 el.currentTime——瀏覽器原生支援「seek 進行中
+           再次設定 currentTime」，會直接重新導向到最新目標，只會在真正定下來的那個目標觸發一次
+           seeked。 */
+        var refTime = (el.seeking && entry.seekTarget != null) ? entry.seekTarget : el.currentTime;
+        if (Math.abs(refTime - st) > tol) {
+          entry.seekTarget = st;
+          if (waits) {
+            waits.push(new Promise(function (resolve) {
+              var settled = false;
+              function finish() { entry.seekTarget = null; if (!settled) { settled = true; resolve(); } }
+              /* 逾時保底跟匯出流程的 seekVisualsTo() 用同一個值：冷片段（還沒被瀏覽器碰過的來源檔案，
+                 尤其是往前跳到較晚才第一次出現的片段）真正 seek 完成可能遠超過一兩百毫秒，
+                 這個逾時只是「萬一 seeked 事件真的沒來」的最後保底，不是預期的正常等待時間。 */
+              var tm = setTimeout(finish, 4000);
+              function onSeeked() {
+                el.removeEventListener('seeked', onSeeked);
+                clearTimeout(tm);
+                finish();
+              }
+              el.addEventListener('seeked', onSeeked);
+              try { el.currentTime = st; } catch (e) { clearTimeout(tm); finish(); }
+            }));
+          } else {
+            try { el.currentTime = st; } catch (e) {}
+          }
         }
         var p = VE.clamp((t - clip.start) / clip.duration, 0, 1);
         var rate = clip.speed * VE.curveRate(clip.curve, p);
@@ -444,22 +479,34 @@
     rafId = requestAnimationFrame(step);
   };
 
-  var redrawTimer = null;
+  /* drawGen：暫停/單張定格時可能連續觸發好幾次 seek 等待（例如快速拖曳時間軸連續呼叫 VE.seek）。
+     每次等待都綁一個世代編號，只有「最新一次」的等待完成時才真的補畫——避免舊的、比較早觸發但
+     seek 比較慢的那次晚回來時，把新畫面又蓋回舊的、已經過期的內容。 */
+  var drawGen = 0;
+
+  /* 暫停時 syncMedia 會用嚴格容差（0.03s）強制把 currentTime 校正到精確位置——播放中原本用寬鬆容差
+     （0.25s）允許自然漂移，暫停瞬間、或使用者在時間軸上拖曳／點擊移動播放頭（尤其往前跳到還沒被
+     瀏覽器碰過的片段）常常正好需要一次新的 seek。seek 是非同步的，過去這裡曾經用「固定延遲
+     120ms 後補畫一次」的做法，但 120ms 只是猜測值——真實情況下 seek 完成所需時間跟匯出流程踩過的
+     坑一樣（見 export.js 的 seekVisualsTo() 與 preloadVideoElements()）：冷片段、較大檔案、往前跳
+     較遠時可能遠超過 120ms，固定延遲不夠時畫面就會卡在黑屏或殘影，之後也不會再有任何補畫。
+     改成真正等待瀏覽器的 `seeked` 事件（4000ms 逾時保底，只在真的異常時才會用到），確保補畫的時機
+     是「畫面真的就緒之後」而不是「猜一個時間應該夠了」。 */
+  function redrawAfterSync(waits) {
+    if (!waits || !waits.length) { VE.drawFrame(); return; }
+    var myGen = ++drawGen;
+    Promise.all(waits).then(function () {
+      if (myGen === drawGen) VE.drawFrame();
+    });
+  }
 
   VE.pause = function () {
     VE.state.playing = false;
     if (rafId) cancelAnimationFrame(rafId);
-    syncMedia(VE.state.playhead, false);
+    var waits = [];
+    syncMedia(VE.state.playhead, false, waits);
     updatePlayBtn();
-    VE.drawFrame();
-    /* 暫停時 syncMedia 會用嚴格容差（0.03s）強制把 currentTime 校正到精確位置——
-       播放中原本用寬鬆容差（0.25s）允許自然漂移，暫停瞬間常常正好落在兩者之間，
-       等於臨時多發生一次 seek。seek 是非同步的，上面這次 drawFrame() 很可能畫在
-       新影格真正解碼完成之前，抓到殘影或黑畫面；播放時鐘已經停了，之後也不會再有
-       任何一次 rAF 補畫，畫面就這樣卡住——這是「按暫停鍵時會出現黑屏」的根因。
-       跟 VE.seek() 同一套「延遲補畫」做法：seek 完成後再畫一次確保顯示正確幀。 */
-    clearTimeout(redrawTimer);
-    redrawTimer = setTimeout(function () { VE.drawFrame(); }, 120);
+    redrawAfterSync(waits);
   };
 
   VE.togglePlay = function () {
@@ -469,14 +516,12 @@
   VE.seek = function (t) {
     var D = VE.projectDuration();
     VE.state.playhead = VE.clamp(t, 0, Math.max(D, 0));
-    syncMedia(VE.state.playhead, VE.state.playing);
+    var waits = VE.state.playing ? null : [];
+    syncMedia(VE.state.playhead, VE.state.playing, waits);
     VE.updateTimeLabels();
     if (VE.updatePlayheadUI) VE.updatePlayheadUI();
     if (!VE.state.playing) {
-      VE.drawFrame();
-      /* 影片 seek 是非同步的，延遲補畫確保顯示正確幀 */
-      clearTimeout(redrawTimer);
-      redrawTimer = setTimeout(function () { VE.drawFrame(); }, 120);
+      redrawAfterSync(waits);
     }
   };
 
