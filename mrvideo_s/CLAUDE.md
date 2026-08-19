@@ -41,9 +41,9 @@
 - 這是**單純的靜態網頁安裝程式**（解壓 zip＋建 .url 捷徑指向 `file://index.html`），不像 `sbir-generator`／`icap-generator`／`phoenix-loan-generator` 的教學版 exe 那樣跑本機 Python HTTP 伺服器——因為 mrvideo_s 是純前端、無 fetch 相依（mp4-muxer／lamejs 皆走絕對網址 CDN），`file://` 下可正常運作，不需要伺服器。
 - 打包內容**只有學員需要的檔案**：`index.html`／`manual.html`／`css/`／`js/`——**不包含 `Code.gs`／`SETUP-授權伺服器設定.md`**（那是老師專用的後端部署文件，不該出現在學員安裝包裡）。
 - `build.ps1` 必須維持純 ASCII（同根目錄版限制），CJK 檔名／資料夾名一律用 `[char]0x____` code point 組字串產生，不可在檔案裡直接打中文字元。
-- 安裝完成對話框提醒文字待更新——舊文案是「使用前需輸入課程講師提供的課程授權序號並驗證通過」，2026-08-19 架構改版後應改成「僅『語音轉字幕』功能需要課程授權序號，其餘功能開箱即用」，避免誤導學員以為整個工具都要序號才能開始剪輯。
+- 安裝完成對話框提醒文字**已於 2026-08-19 更新**：舊文案「使用前需輸入課程講師提供的課程授權序號並驗證通過」改成「開啟後即可直接剪輯、匯出，不需要任何序號。僅『AI 語音轉字幕』功能需輸入課程講師提供的『課程授權序號』（畫面最上方）並驗證通過才能使用」，避免誤導學員以為整個工具都要序號才能開始剪輯。
 
-重建指令：`powershell -ExecutionPolicy Bypass -File "mrvideo_s\影片先生_V1\build.ps1"`。**修改 `index.html`／`css`／`js`／`manual.html` 後要重新執行這個指令才會反映到安裝包裡**，安裝程式本身不會自動更新。**2026-08-19 這次序號架構改版＋浮水印/PWA 改動後尚未重建**，待 `Installer.cs` 對話框文案一併更新後再重建。
+重建指令：`powershell -ExecutionPolicy Bypass -File "mrvideo_s\影片先生_V1\build.ps1"`。**修改 `index.html`／`css`／`js`／`manual.html` 後要重新執行這個指令才會反映到安裝包裡**，安裝程式本身不會自動更新。**2026-08-19 已為序號架構改版＋浮水印/PWA 改動＋對話框文案重建過一次**（70KB）。
 
 **已知限制**：這個編譯出的 GUI exe（WinForms `MessageBox`）在本 Claude Code 沙箱工具環境裡無法直接執行測試（`Access is denied`，即使 `dangerouslyDisableSandbox:true` 仍然如此）——已確認不是編譯失敗（`xxd`／`file` 驗證過是合法的 PE32 .NET GUI 執行檔，與根目錄版一樣的編譯方式），推測是這個工具環境沒有可互動的視窗桌面（Window Station）可以顯示 `MessageBox`，而非執行檔本身有問題。**需要使用者自己在真正的桌面環境雙擊測試**才能確認安裝流程與桌面捷徑正常運作。
 

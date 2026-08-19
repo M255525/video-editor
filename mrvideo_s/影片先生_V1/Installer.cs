@@ -59,7 +59,8 @@ static class Program
                     "安裝完成！\n\n" +
                     "安裝位置：" + dir + "\n" +
                     "桌面已建立「" + appName + "」與「" + appName + "操作手冊」捷徑。\n\n" +
-                    "使用前需輸入課程講師提供的「課程授權序號」並驗證通過，才能使用本工具。\n\n" +
+                    "開啟後即可直接剪輯、匯出，不需要任何序號。\n" +
+                    "僅「AI 語音轉字幕」功能需輸入課程講師提供的「課程授權序號」（畫面最上方）並驗證通過才能使用。\n\n" +
                     "是否立即開啟" + appName + "？",
                     appName + " 安裝程式",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Information);
