@@ -423,19 +423,28 @@
     rafId = requestAnimationFrame(step);
   };
 
+  var redrawTimer = null;
+
   VE.pause = function () {
     VE.state.playing = false;
     if (rafId) cancelAnimationFrame(rafId);
     syncMedia(VE.state.playhead, false);
     updatePlayBtn();
     VE.drawFrame();
+    /* 暫停時 syncMedia 會用嚴格容差（0.03s）強制把 currentTime 校正到精確位置——
+       播放中原本用寬鬆容差（0.25s）允許自然漂移，暫停瞬間常常正好落在兩者之間，
+       等於臨時多發生一次 seek。seek 是非同步的，上面這次 drawFrame() 很可能畫在
+       新影格真正解碼完成之前，抓到殘影或黑畫面；播放時鐘已經停了，之後也不會再有
+       任何一次 rAF 補畫，畫面就這樣卡住——這是「按暫停鍵時會出現黑屏」的根因。
+       跟 VE.seek() 同一套「延遲補畫」做法：seek 完成後再畫一次確保顯示正確幀。 */
+    clearTimeout(redrawTimer);
+    redrawTimer = setTimeout(function () { VE.drawFrame(); }, 120);
   };
 
   VE.togglePlay = function () {
     if (VE.state.playing) VE.pause(); else VE.play();
   };
 
-  var redrawTimer = null;
   VE.seek = function (t) {
     var D = VE.projectDuration();
     VE.state.playhead = VE.clamp(t, 0, Math.max(D, 0));
