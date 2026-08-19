@@ -100,13 +100,44 @@
     ctx.fillText(m && m.offline ? '素材離線' : '載入中…', 0, 0);
   }
 
+  var TEXT_SAFE_MARGIN_RATIO = 0.05;   // 字幕安全區域：左右各留畫布寬度 5%，避免長字幕（尤其語音轉字幕自動生成的）超出畫面邊緣
+
+  /** 把一行文字依可用寬度貪婪斷行（逐字元，中英文皆適用） */
+  function wrapLineToWidth(line, maxWidth) {
+    if (!maxWidth || maxWidth <= 0 || ctx.measureText(line).width <= maxWidth) return [line];
+    var out = [], cur = '';
+    for (var i = 0; i < line.length; i++) {
+      var next = cur + line[i];
+      if (cur && ctx.measureText(next).width > maxWidth) {
+        out.push(cur);
+        cur = line[i];
+      } else {
+        cur = next;
+      }
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  function wrapText(content, maxWidth) {
+    var out = [];
+    String(content || '').split('\n').forEach(function (ln) {
+      wrapLineToWidth(ln, maxWidth).forEach(function (l) { out.push(l); });
+    });
+    return out;
+  }
+
   function drawText(clip, tr) {
+    var W = VE.state.project.width;
     var t = clip.text;
     var size = Math.max(4, t.size * tr.scale);
     ctx.font = (t.bold ? 'bold ' : '') + size + 'px ' + t.font;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    var lines = String(t.content || '').split('\n');
+    var centerX = W / 2 + tr.x;
+    var margin = W * TEXT_SAFE_MARGIN_RATIO;
+    var maxWidth = 2 * Math.max(10, Math.min(centerX - margin, (W - centerX) - margin));
+    var lines = wrapText(t.content, maxWidth);
     var lh = size * 1.25;
     var totalH = lh * lines.length;
     if (t.bg) {

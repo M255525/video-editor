@@ -27,6 +27,10 @@
 
 跟根目錄版本（見 `../CLAUDE.md`）同一套邏輯，直接複製過來套用：`#marqueeBar` 是 `#app` 裡第二個 flex 子項（第一個是 2026-08-19 新增的 `#licenseBar`），跟序號驗證、下方 VE 命名空間都無關的獨立 `<script>`。**刻意選擇跟共用跑馬燈端點直接呼叫，沒有整合進 `js/license-gate.js` 的序號驗證流程**——本工具的序號驗證是打自己獨立的 Apps Script（見上方「部署狀態」），跟這份共用跑馬燈 Google Sheet 完全是两回事；`localStorage` key `ve_marquee`，每 20 分鐘重抓一次。**2026-08-19 後：全螢幕鎖定遮罩已移除，跑馬燈跟頁面其他內容一樣一開始就看得到**，不再有「鎖定畫面時被擋住」的視覺差異（這點跟舊版行為不同，也跟 `AIvideo_studio` 趨於一致）。改跑馬燈內容直接編輯共用 Sheet 即可：<https://docs.google.com/spreadsheets/d/1sSBXW2dAc-4u0j21Q72MzNEBIhDccShhr1iJcAdG0UE/edit>。**改完後記得重新執行 `影片先生_V1/build.ps1` 才會反映到安裝包裡**。
 
+## 文字安全區域（2026-08-19 新增，與根目錄版本同一批邏輯）
+
+`js/preview.js` 的 `drawText()` 跟根目錄版本一樣加了字幕安全區域自動斷行（左右各留畫布寬度 5%，含語音轉字幕自動生成的字幕在內），詳細設計與已知不完美之處見 `../CLAUDE.md` 的「文字安全區域」一節，這裡不重複——兩邊是逐位元組相同的邏輯，直接複製套用。已用 Playwright 對這裡的 `VE.getCanvas()` 重新驗證過一次（16:9／9:16 兩種畫布皆通過）。
+
 ## 匯出浮水印與加入主畫面（PWA，2026-08-19 新增）
 
 - **匯出浮水印**：跟 `phoenix-loan-limit` 的浮水印精神一致（防止教學版產出被拿去販售/公開發布卻看不出來源），但落地方式不同——本工具沒有文件預覽/列印/Word 匯出，改成**燒錄在匯出的影片畫面上**。做法：`preview.js` 新增 `drawExportWatermark(W,H)`，畫在畫布右下角（半透明白字「影片先生 課程教學版」+ 黑色描邊），只在 `VE.drawFrame()` 尾端、`if (VE.exporting)` 成立時才呼叫——`VE.exporting` 是既有的匯出旗標（`export.js` 的 `fastExport()`/`realtimeExport()` 開始時會設成 `true`），因此**快速匯出（WebCodecs 逐幀 `VE.drawFrame(t)`）與即時錄製（`canvas.captureStream()` 擷取同一份 `drawFrame` 的 rAF 畫面）兩條匯出路徑會自動共用同一份浮水印邏輯**，不需要分別處理；一般編輯時的預覽畫布因為 `VE.exporting` 是 `false` 不會顯示浮水印，不影響操作視覺。已用 Playwright 對 `VE.getCanvas()` 做像素級驗證：`VE.exporting=true` 前後右下角區域像素總和有明顯差異、切回 `false` 後完全還原成跟切換前一致，證明浮水印只在匯出時出現、且不會殘留。

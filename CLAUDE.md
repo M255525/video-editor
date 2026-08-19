@@ -16,7 +16,7 @@
 | `js/state.js` | 資料模型（project/track/clip）、undo/redo（快照式）、localStorage 存讀（key `video-editor-project-v1`） |
 | `js/db.js` | IndexedDB（`video-editor-db`/`blobs`）存素材二進位，重新整理後可還原 |
 | `js/media.js` | 匯入（input/拖放）、metadata 探測與縮圖、素材庫 UI、隱藏 `<video>/<audio>` 元素池 `VE.clipEls`；`getOrCreateSubtitleTrack()`（找/建專用「字幕」疊加軌，SRT 匯入與語音轉字幕共用）、`VE.addTranscriptSegments(segments)`（把 `[{start,end,text}]` 生成文字片段塞進字幕軌） |
-| `js/preview.js` | Canvas 2D 逐幀合成（濾鏡 `ctx.filter`、關鍵影格 transform、轉場、文字/貼圖）、rAF 播放時鐘、Web Audio 混音、預覽畫布拖曳移動 |
+| `js/preview.js` | Canvas 2D 逐幀合成（濾鏡 `ctx.filter`、關鍵影格 transform、轉場、文字/貼圖）、rAF 播放時鐘、Web Audio 混音、預覽畫布拖曳移動；`drawText()` 有**字幕安全區域自動斷行**（2026-08-19 新增，見下方「文字安全區域」） |
 | `js/timeline.js` | 多軌時間軸：渲染、拖曳/跨軌搬移、邊緣裁切、分割、吸附、sticky 尺規（只畫可視範圍，避開 canvas 寬度上限） |
 | `js/panels.js` | 左側（文字預設/emoji 貼圖/濾鏡預設/轉場卡片/**⚙️設定**）＋右側屬性面板（變換+關鍵影格◆、變速、音訊、濾鏡滑桿、文字樣式）；「文字」面板的 SRT 匯入按鈕與**🤖 語音轉字幕**按鈕（呼叫 `VE.transcribeSpeech()` 再交給 `VE.addTranscriptSegments()`）——**API 金鑰輸入框放在「⚙️設定」分頁、按鈕與結果訊息留在「文字」分頁**（兩個 DOM 元素分屬不同 `.panel`，JS 用同一組 id 直接互相取值，不受目前顯示哪個分頁影響） |
 | `js/export.js` | 雙模式匯出：優先 **WebCodecs 離線快速匯出**（逐幀 seek→合成→VideoEncoder H.264 + OfflineAudioContext 混音→AudioEncoder AAC/Opus + mp4-muxer 封裝，無需播放）；不支援時退回 MediaRecorder 即時錄製。mp4-muxer 走 jsdelivr CDN（index.html），離線/載入失敗自動退回即時錄製。**附加匯出（選用勾選框）**：同時輸出字幕 `.srt`（收集所有 `type:'text'` 片段依 `start` 排序，純字串組裝，不需額外套件）與音軌 `.mp3`（重用 `renderAudio()` 的 OfflineAudioContext 混音結果，餵給 lamejs 逐 1152-sample frame 編碼；lamejs 走 CDN，同樣離線/載入失敗只會讓該選項失敗、不影響影片本身匯出）。兩者都在 `finishDownload()` 觸發視訊下載後才附加執行，沒有可匯出內容（無文字片段／無音軌）時各自顯示 toast 略過，不會擋住主要的影片匯出。**`VE.transcribeSpeech(apiKey, onProgress)`**：語音轉字幕的核心，重用同一套 `renderAudio()`＋`encodeMP3Blob()` 混音管線把時間軸現有聲音編碼成 mp3 轉 base64，送 **Gemini**（`gemini-3.5-flash`，`generateContent` + `inline_data` 音訊 part，header `x-goog-api-key`）並在提示詞要求回傳含時間戳記的 JSON 陣列，用正規表示式從回應文字裡截出 `[...]` 再 `JSON.parse`，回傳 `[{start,end,text}]`；只負責「聲音變文字」，不碰時間軸狀態（新增片段的部分交給 `media.js` 的 `VE.addTranscriptSegments`）。金鑰存 localStorage（key `video-editor-gemini-key`），單檔上限 15MB（base64 會膨脹約 1.33 倍，故比 Whisper 版本的 25MB 門檻更保守）超過會丟錯誤訊息。**2026-07-26 由 OpenAI Whisper 改為 Gemini**（使用者指定），Gemini 的時間戳記是模型自行估算、精確度不如 Whisper 原生對齊，這是換供應商的已知取捨，manual.html 已加註提醒使用者手動核對時間點 |
@@ -40,6 +40,16 @@
 ## 頂部跑馬燈（2026-07-30 新增）
 
 `#marqueeBar` 是 `#app`（`height:100vh` flex column）裡的第一個 flex 子項（非 `position:fixed`，避免蓋住 `#topbar`），內容跟 ai-video-studio 系列（主版／`AIvideo_studio` 教學版／`ppt-course-video`）**共用同一個授權伺服器**（`https://script.google.com/macros/s/AKfycbwKX0.../exec`）與同一份跑馬燈 Google Sheet（<https://docs.google.com/spreadsheets/d/1sSBXW2dAc-4u0j21Q72MzNEBIhDccShhr1iJcAdG0UE/edit>）。本專案（根目錄版）沒有序號登入機制，做法是頁面載入時直接 POST 空序號給該網址（`doPost` 不論序號有效與否都會附上 `marquee` 陣列），`localStorage` key `ve_marquee`，每 20 分鐘背景重抓一次；獨立 `<script>` 掛在 `<body>` 開頭、`#app` 裡最前面，跟下方 `VE` 命名空間模組完全無關。改跑馬燈內容直接編輯該份 Sheet 即可，不需要重新部署 Apps Script，四個工具會同時更新。**`mrvideo_s/` 教學版也已同步加上（2026-07-30）**：做法跟根目錄版完全一樣的直接呼叫，**沒有**改成跟 `AIvideo_studio` 一樣「夾帶在序號驗證回應裡」——`mrvideo_s` 有自己獨立的序號驗證 Apps Script（跟這份共用跑馬燈 Sheet 完全無關），改成夾帶做法要另外去改它自己的 `Code.gs` 並重新部署，權衡後選擇直接呼叫共用端點的簡單做法，兩者互不影響。差異只在版面：`mrvideo_s` 的 `#marqueeBar` 放在 `#licenseGate` 全螢幕鎖定遮罩**之後**、`#app` 內部最上方（不是 fixed 蓋在遮罩上面），所以鎖定畫面顯示時跑馬燈是被擋住的，序號驗證通過、遮罩隱藏後才會看到——這是刻意的簡化，不是遺漏。詳見 `mrvideo_s/CLAUDE.md`。
+
+## 文字安全區域（2026-08-19 新增）
+
+所有文字片段（含手動輸入與語音轉字幕／SRT 匯入自動生成的字幕）渲染時會自動斷行、確保**左右兩側各留畫布寬度 5% 的安全邊界**，不會超出畫布邊緣被裁切——這是使用者發現語音轉字幕生成的長句子會跑出畫面左右邊緣後提出的需求（原本要求「左右各留 2mm」，但畫布是像素單位、沒有實體毫米概念，跟使用者確認後改用「畫布寬度固定比例」的做法，比照影視業常見的「字幕安全區」慣例）。
+
+- `preview.js` 的 `TEXT_SAFE_MARGIN_RATIO = 0.05`＋`wrapLineToWidth()`／`wrapText()`：逐字元貪婪斷行（中英文皆適用，不依賴空白字元分詞），只在原本手動換行 `\n` 產生的每一段落內部另外自動斷行，不會把使用者刻意分段的 `\n` 吃掉。
+- **安全寬度會考慮片段目前的水平位置，不是單純取畫布總寬度**：`drawText()` 用 `centerX = W/2 + tr.x` 算出片段目前的水平中心點，再取「中心點到左邊界」與「中心點到右邊界」兩者較小值的兩倍當作可用寬度——這樣即使使用者把文字拖離畫布中央，斷行仍會依實際留白空間動態調整，不會算錯。
+- 套用的字型大小是**片段當下的實際渲染大小**（`t.size * tr.scale`，已含變速/關鍵影格縮放），且 `ctx.font` 在斷行計算前就先設好，所以 `ctx.measureText()` 量到的寬度就是最終畫面上的實際寬度，斷行結果直接可信。
+- **已知不完美之處**：`contentSize()`（供選取框與滑鼠命中測試用）仍用原本未斷行的量測邏輯，沒有跟著套用斷行——這只影響選取框視覺（框可能比實際換行後的文字寬），不影響實際渲染輸出的正確性，故先不處理，除非之後選取框誤差造成操作困擾再回來補。
+- 已用 Playwright 對 canvas 像素做邊界驗證：16:9／9:16 兩種畫布、置中與偏移中心兩種片段位置，斷行後的文字像素邊界皆落在安全區域內。
 
 ## 已知限制
 
