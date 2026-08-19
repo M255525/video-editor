@@ -23,12 +23,31 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Build Pages content (只發布 mrvideo_s 課程教學版；根目錄一般版不公開發布，只留轉址頁)
+        run: |
+          mkdir -p dist/mrvideo_s
+          cp mrvideo_s/index.html mrvideo_s/manual.html mrvideo_s/manifest.json mrvideo_s/service-worker.js dist/mrvideo_s/
+          cp -r mrvideo_s/css mrvideo_s/js mrvideo_s/icons dist/mrvideo_s/
+          cat > dist/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="zh-Hant">
+          <head>
+          <meta charset="UTF-8">
+          <meta http-equiv="refresh" content="0; url=mrvideo_s/">
+          <title>轉址中…</title>
+          <script>location.replace("mrvideo_s/");</script>
+          </head>
+          <body>
+          <p>正在前往 <a href="mrvideo_s/">影片先生（課程教學版）</a>…</p>
+          </body>
+          </html>
+          EOF
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: 'dist'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
