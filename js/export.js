@@ -376,9 +376,13 @@
 
           function doSeek() {
             if (Math.abs(el.currentTime - st) <= 0.005) { finish(); return; }
-            /* 長 GOP 真實素材 seek 到非關鍵影格位置偶爾需要往前解碼較多幀，比合成測試影片慢，
-               逾時值比原本寬鬆一些；沒有在時限內收到 seeked 也會放行，避免拖垮整個匯出。 */
-            var tm = setTimeout(finish, 700);
+            /* 一個片段「第一次」被存取到（例如時間軸中後段才出現的片段，前面完全沒機會被瀏覽器
+               碰過）時，seek 到深處可能要等瀏覽器現拉/現解碼一大段資料，遠比同一片段內逐幀往前
+               挪一點點慢很多——逾時值刻意抓得寬（4 秒），寧可讓真的異常的片段多等幾秒，也不要
+               在資料還在載入途中就提早放行、抓到黑畫面（實測案例：使用者匯出到 1:28 才黑屏，
+               剛好是某片段第一次出現的時間點）。搭配下面 `preloadVideoElements()` 提早暖身，
+               大多數情況下真正等到 4 秒逾時的機會應該很少。 */
+            var tm = setTimeout(finish, 4000);
             function onSeeked() {
               el.removeEventListener('seeked', onSeeked);
               clearTimeout(tm);
@@ -392,8 +396,8 @@
             doSeek();
           } else {
             /* 元素剛建立、連 metadata 都還沒載入完成——先等 loadedmetadata 再繼續，
-               避免用完全沒資料的元素畫面直接進入匯出（黑屏的主因） */
-            var metaTm = setTimeout(finish, 2000);
+               避免用完全沒資料的元素畫面直接進入匯出（黑屏的主因）；逾時同樣放寬。 */
+            var metaTm = setTimeout(finish, 5000);
             el.addEventListener('loadedmetadata', function once() {
               el.removeEventListener('loadedmetadata', once);
               clearTimeout(metaTm);
@@ -404,6 +408,22 @@
       });
     });
     return Promise.all(waits);
+  }
+
+  /** 提早建立時間軸上所有影片片段的 `<video>` 元素、觸發瀏覽器在背景開始緩衝。
+      不等待任何一個完全就緒——目的只是搶在逐幀迴圈真的需要某個片段的資料「之前」，
+      讓瀏覽器提早開始下載/解碼，減少大檔案第一次被存取（通常是接在前一個片段後面、
+      時間軸中後段才出現的片段）時臨時才開始緩衝、seek 遲遲等不到 seeked 的情況——
+      這正是使用者實測回報「匯出到 1:28 才黑屏」的成因：那個時間點剛好是某個片段第一次
+      出現，它的來源檔案在那之前完全沒有機會被瀏覽器碰過，seek 到深處自然要等很久。 */
+  function preloadVideoElements() {
+    VE.state.project.tracks.forEach(function (tr) {
+      if (tr.type === 'audio') return;
+      tr.clips.forEach(function (clip) {
+        if (clip.type !== 'video') return;
+        VE.ensureClipEl(clip);
+      });
+    });
   }
 
   function preloadImages() {
@@ -434,6 +454,7 @@
     els.start.disabled = true;
     decodeCache = {};
     setStatus('準備編碼器…', 1);
+    preloadVideoElements();   // 越早呼叫越好——讓後面音訊混音/編碼的時間也順便變成背景緩衝的空檔
 
     try {
       /* 蒐集要混音的片段 */
