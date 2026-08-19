@@ -283,7 +283,7 @@
   var KF_PROPS = [
     { key: 'x', label: 'X 位置', min: -4000, max: 4000, step: 1, pct: false },
     { key: 'y', label: 'Y 位置', min: -4000, max: 4000, step: 1, pct: false },
-    { key: 'scale', label: '縮放 %', min: 1, max: 1000, step: 1, pct: true },
+    { key: 'scale', label: '縮放 %', min: 1, max: 5000, step: 1, pct: true },
     { key: 'rotation', label: '旋轉 °', min: -3600, max: 3600, step: 1, pct: false },
     { key: 'opacity', label: '不透明 %', min: 0, max: 100, step: 1, pct: true }
   ];

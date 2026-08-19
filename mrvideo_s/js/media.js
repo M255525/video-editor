@@ -18,6 +18,63 @@
     return null;
   }
 
+  /** 部分影片（常見於螢幕錄影軟體／特定手機 App 匯出，容器裡記錄的時長中繼資料不準確）
+      瀏覽器 <video> 回報的 duration 會比實際可播放內容長，多出來的部分畫面會停格在最後一幀，
+      沒有可靠的瀏覽器 API 能直接查出真正的內容長度。這裡用極小畫布逐格比對、二分搜尋找出
+      「畫面開始跟結尾幀不再有明顯差異」的時間點，回推真實時長；門檻刻意保守（至少差 0.3 秒
+      且超過 3% 才採信修正），避免把影片本身合理的結尾停格鏡頭誤判成錯誤而裁短。
+      回傳 null 代表沒有偵測到明顯的停格尾段，維持原始 duration 即可。 */
+  function detectFrozenTail(v, rawDuration) {
+    return new Promise(function (resolve) {
+      if (!isFinite(rawDuration) || rawDuration < 1) { resolve(null); return; }
+      var c = document.createElement('canvas');
+      c.width = 12; c.height = 12;
+      var cctx = c.getContext('2d', { willReadFrequently: true });
+      function grabAt(t) {
+        return new Promise(function (res) {
+          var done = false;
+          function finish() {
+            if (done) return; done = true;
+            v.removeEventListener('seeked', finish);
+            try {
+              cctx.drawImage(v, 0, 0, 12, 12);
+              res(cctx.getImageData(0, 0, 12, 12).data);
+            } catch (e) { res(null); }
+          }
+          v.addEventListener('seeked', finish);
+          v.currentTime = VE.clamp(t, 0, rawDuration - 0.02);
+          setTimeout(finish, 500);
+        });
+      }
+      function differs(a, b) {
+        if (!a || !b) return true;
+        var diff = 0;
+        for (var i = 0; i < a.length; i += 4) {
+          diff += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]);
+        }
+        return diff > 700;   // 經驗門檻：12x12 畫布下，明顯的畫面內容變化會遠超過這個值
+      }
+      grabAt(rawDuration - 0.02).then(function (tailFrame) {
+        var lo = 0, hi = rawDuration - 0.02, iter = 0;
+        function step() {
+          if (iter >= 8 || hi - lo < 0.15) {
+            var corrected = hi + 0.1;
+            if (rawDuration - corrected > 0.3 && corrected < rawDuration * 0.97) resolve(corrected);
+            else resolve(null);
+            return;
+          }
+          iter++;
+          var mid = (lo + hi) / 2;
+          grabAt(mid).then(function (frame) {
+            if (differs(frame, tailFrame)) lo = mid; else hi = mid;
+            step();
+          });
+        }
+        step();
+      });
+    });
+  }
+
   function probeVideo(url) {
     return new Promise(function (resolve, reject) {
       var v = document.createElement('video');
@@ -26,19 +83,36 @@
       v.src = url;
       v.onerror = function () { reject(new Error('無法讀取影片')); };
       v.onloadedmetadata = function () {
-        var meta = { duration: v.duration, width: v.videoWidth, height: v.videoHeight };
-        var t = Math.min(0.3, (v.duration || 1) / 2);
-        v.onseeked = function () {
-          try {
-            var c = document.createElement('canvas');
-            c.width = 160; c.height = Math.max(2, Math.round(160 * meta.height / Math.max(1, meta.width)));
-            c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
-            meta.thumb = c.toDataURL('image/jpeg', 0.6);
-          } catch (e) { meta.thumb = null; }
+        var rawDuration = v.duration;
+        var meta = { duration: rawDuration, rawDuration: rawDuration, width: v.videoWidth, height: v.videoHeight };
+
+        function grabThumb() {
+          return new Promise(function (res) {
+            var t = Math.min(0.3, (rawDuration || 1) / 2);
+            var done = false;
+            function finish() {
+              if (done) return; done = true;
+              v.removeEventListener('seeked', finish);
+              try {
+                var c = document.createElement('canvas');
+                c.width = 160; c.height = Math.max(2, Math.round(160 * meta.height / Math.max(1, meta.width)));
+                c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+                meta.thumb = c.toDataURL('image/jpeg', 0.6);
+              } catch (e) { meta.thumb = null; }
+              res();
+            }
+            v.addEventListener('seeked', finish);
+            v.currentTime = t;
+            setTimeout(finish, 3000);
+          });
+        }
+
+        grabThumb().then(function () {
+          return detectFrozenTail(v, rawDuration);
+        }).then(function (corrected) {
+          if (corrected) meta.duration = corrected;
           resolve(meta);
-        };
-        v.currentTime = t;
-        setTimeout(function () { if (!meta.thumb) resolve(meta); }, 3000);
+        });
       };
     });
   }
@@ -166,8 +240,12 @@
           id: VE.uid(), name: file.name, type: type, mime: file.type
         };
         m.duration = meta.duration; m.width = meta.width; m.height = meta.height;
+        m.rawDuration = meta.rawDuration;   // 修正前的原始容器時長，供時間軸邊緣拖曳延伸的上限使用
         if (meta.thumb) m.thumb = meta.thumb;
         m.url = url; m.offline = false;
+        if (meta.rawDuration && meta.duration < meta.rawDuration - 0.05) {
+          VE.toast(file.name + '：已修正偵測到的時長（原始檔案的時長資訊不準確，常見於螢幕錄影或部分手機 App 匯出的影片）', 4500);
+        }
         VE.state.media[m.id] = m;
         delete VE.imgCache[m.id];
         /* 復活後把引用此素材的片段元素重建 */

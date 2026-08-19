@@ -515,7 +515,7 @@
         var px = (e.clientX - rect.left) * drag.scale;
         var py = (e.clientY - rect.top) * drag.scale;
         var d = Math.hypot(px - drag.cx, py - drag.cy);
-        setClipProp(c, 'scale', VE.clamp(drag.os * d / drag.d0, 0.02, 20));
+        setClipProp(c, 'scale', VE.clamp(drag.os * d / drag.d0, 0.02, 50));
       }
       VE.drawFrame();
     });
@@ -543,7 +543,7 @@
       var tRel = VE.state.playhead - c.start;
       var cur = VE.kfValue(c, 'scale', tRel);
       var f = e.deltaY < 0 ? 1.06 : 1 / 1.06;
-      setClipProp(c, 'scale', VE.clamp(cur * f, 0.02, 20));
+      setClipProp(c, 'scale', VE.clamp(cur * f, 0.02, 50));
       VE.drawFrame();
       wheelCommit();
     }, { passive: false });

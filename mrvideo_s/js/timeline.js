@@ -348,7 +348,9 @@
       } else { /* trim-r */
         var maxDur = Infinity;
         if ((clip.type === 'video' || clip.type === 'audio') && m && m.duration) {
-          maxDur = (m.duration - orig.in) / clip.speed;
+          /* 用 rawDuration（偵測修正前的原始容器時長）當延伸上限，不是修正後的 m.duration——
+             這樣如果自動偵測誤判把片段長度修短了，使用者仍可手動拖曳邊緣拉回被裁掉的部分 */
+          maxDur = ((m.rawDuration || m.duration) - orig.in) / clip.speed;
         }
         var nd = VE.clamp(orig.dur + dx, 0.1, maxDur);
         var snappedE = snapTime(orig.start + nd, clip.id);
