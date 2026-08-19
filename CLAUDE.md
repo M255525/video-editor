@@ -2,7 +2,9 @@
 
 參考剪映（CapCut）桌面版的**瀏覽器端影片編輯器**（產品名「影片先生」，創作者 Mark Tsai；頁尾與匯出視窗固定顯示「僅供教學、課程及個人使用」警語，勿移除）。純前端、無 build step、無框架、無外部相依；以 `file://` 開啟或任何靜態伺服器託管皆可（`.claude/launch.json` 已有 `video-editor` 設定，port 8766）。建議使用 Chrome / Edge。
 
-**公開 GitHub repo（2026-08-19）**：<https://github.com/M255525/video-editor>。已啟用 GitHub Pages（`.github/workflows/deploy-pages.yml` 標準 Actions 部署，`path:'.'` 發布整個 repo 根目錄，比照 `ai-image-prompt-studio` 等工具的模式，不用 legacy branch-source），線上網址：<https://m255525.github.io/video-editor/>——發布的是**根目錄這個無序號限制的一般版**（使用者要求「免費公開成一般網頁」，跟教學版 `mrvideo_s/` 區隔開來）。因為 `path:'.'` 是整個 repo 根目錄，`mrvideo_s/`／`MrVideo/` 兩個子資料夾也會一併變成可透過網址直接瀏覽（例如 `.../mrvideo_s/index.html`），這是刻意接受的行為（沒有敏感內容，兩者都只是各自獨立運作的靜態頁面，只是沒有從首頁連結過去）。**額外好處**：GitHub Pages 走 `https://`，屬於瀏覽器認定的安全情境（secure context），比透過 `file://` 開啟或桌面版 exe 更有機會啟用快速匯出所需的 WebCodecs API（`file://` 底下部分瀏覽器版本可能不判定為安全情境，導致自動退回較慢的即時錄製匯出）。
+**公開 GitHub repo（2026-08-19）**：<https://github.com/M255525/video-editor>。已啟用 GitHub Pages（`.github/workflows/deploy-pages.yml` 標準 Actions 部署，不用 legacy branch-source），線上網址：<https://m255525.github.io/video-editor/>。
+
+**2026-08-19 當天內接續調整：改成只公開 `mrvideo_s/` 教學版，根目錄一般版下線（改回轉址頁）**。原本 `path:'.'` 會把整個 repo 根目錄（含一般版 `index.html`／`css`／`js`）都發布出去，使用者後來要求「取消保留一般版的公開頁面，只保留教學版」。做法：workflow 新增一個 build 步驟，先把 `mrvideo_s/` 學員需要的檔案（`index.html`／`manual.html`／`manifest.json`／`service-worker.js`／`css/`／`js/`／`icons/`——**不含** `Code.gs`／`SETUP-授權伺服器設定.md`／`影片先生_V1/` 這些老師專用或安裝包產物）複製進 `dist/mrvideo_s/`，根目錄 `dist/index.html` 放一個轉址到 `mrvideo_s/` 的極簡頁面（比照 `IPA_Kano` 既有的 `meta refresh`＋`location.replace()` 雙保險做法），`upload-pages-artifact` 改成上傳 `dist` 而非 `.`。**這只影響 Pages 公開的內容，repo 本身與根目錄的一般版原始檔完全沒有被刪除或修改**，本機開發／`MrVideo/` 安裝程式都不受影響，純粹是「對外發布範圍」變了。已用 curl／Playwright 驗證：根目錄 `/` 回 200 且內容是轉址頁、實際瀏覽會自動跳到 `/mrvideo_s/`；一般版專屬檔案路徑（如 `/css/style.css`、`/manual.html`）已變成 404，不再對外可見；`/mrvideo_s/` 仍正常運作，manifest／service worker 也正確載入生效。**意外的額外好處**：這次順便發現 PWA「加入主畫面」在這個 https 網址上是**真的能用的**（`navigator.serviceWorker.getRegistration()` 狀態為 `activated`）——不像 `mrvideo_s/CLAUDE.md` 先前記錄的「exe 走 file:// 無法註冊 Service Worker」那個已知限制，GitHub Pages 這個管道等於間接解決了那個限制，學員透過這個網址使用時可以真正把教學版加入主畫面。
 
 ## 架構
 
