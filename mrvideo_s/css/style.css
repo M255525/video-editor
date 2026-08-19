@@ -215,6 +215,7 @@ body[data-drag-type="audio"] .track-row[data-track-type="audio"]{
 .footer-credit{white-space:nowrap}
 .footer-link{color:var(--accent);text-decoration:none;white-space:nowrap}
 .footer-link:hover{text-decoration:underline}
+.footer-install-btn{background:none;border:none;font-size:11px;padding:0;font-family:inherit}
 
 #toast{position:fixed;bottom:300px;left:50%;transform:translateX(-50%);background:var(--panel3);border:1px solid var(--border);color:var(--text);padding:9px 18px;border-radius:8px;font-size:13px;z-index:200;box-shadow:0 4px 20px rgba(0,0,0,.5)}
 

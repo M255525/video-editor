@@ -63,4 +63,4 @@
 
 ## 課程教學版（mrvideo_s/）
 
-子資料夾 `mrvideo_s/` 是給學員使用的教學版：功能與根目錄版本相同，但**整個工具需先輸入「課程授權序號」並按「確認」驗證通過才能使用**（全螢幕鎖定畫面，套用 `member-license-gate` skill，比照 `sbir-generator/sbir-gen-s`、`icap-generator/icap_s` 的做法，但這裡是鎖整個工具而非單一功能）。序號自第一次驗證起提供 4 個月使用期限，透過獨立的 Google Apps Script／Google Sheet 檢查。詳見 `mrvideo_s/CLAUDE.md`。**這是獨立複製的 `index.html`／`css`／`js`，不是共用檔案**——根目錄版本異動時（含這次修掉的音訊交界喀聲問題）不會自動同步過去，需要時手動套用。
+子資料夾 `mrvideo_s/` 是給學員使用的教學版：功能與根目錄版本相同，但**整個工具需先輸入「課程授權序號」並按「確認」驗證通過才能使用**（全螢幕鎖定畫面，套用 `member-license-gate` skill，比照 `sbir-generator/sbir-gen-s`、`icap-generator/icap_s` 的做法，但這裡是鎖整個工具而非單一功能）。序號自第一次驗證起提供 4 個月使用期限，透過獨立的 Google Apps Script／Google Sheet 檢查。**2026-08-19 新增**：匯出的影片會燒錄「影片先生 課程教學版」浮水印（只在 `VE.exporting` 為真時才畫，編輯預覽不受影響）＋加入主畫面（PWA，manifest/service-worker/icons）；根目錄版本沒有這兩項（浮水印比照教學版慣例只鎖教學版，根目錄一般版維持乾淨輸出）。窄螢幕鎖定提示（`@media max-width:600px`）根目錄版與教學版皆早已存在，非本次新增。詳見 `mrvideo_s/CLAUDE.md`。**這是獨立複製的 `index.html`／`css`／`js`，不是共用檔案**——根目錄版本異動時（含這次修掉的音訊交界喀聲問題）不會自動同步過去，需要時手動套用。

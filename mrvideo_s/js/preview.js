@@ -172,6 +172,24 @@
     }
   }
 
+  /* ── 匯出浮水印：只在 VE.exporting 為真時燒錄進畫面（編輯時的預覽畫布不顯示） ── */
+  function drawExportWatermark(W, H) {
+    var text = '影片先生 課程教學版';
+    var size = Math.max(14, Math.round(W * 0.024));
+    ctx.save();
+    ctx.font = 'bold ' + size + 'px "Microsoft JhengHei",sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(1, size * 0.14);
+    ctx.strokeStyle = 'rgba(0,0,0,.55)';
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    var pad = Math.round(size * 0.8);
+    ctx.strokeText(text, W - pad, H - pad);
+    ctx.fillText(text, W - pad, H - pad);
+    ctx.restore();
+  }
+
   /* ── 整幀合成 ── */
   VE.drawFrame = function (t) {
     if (!ctx || !VE.state.project) return;
@@ -190,6 +208,7 @@
       var clip = VE.clipAt(tr, t);
       if (clip) drawWithTransition(tr, clip, t);
     }
+    if (VE.exporting) drawExportWatermark(W, H);
     /* 暫停時畫選取外框 */
     if (!VE.state.playing && !VE.exporting) {
       var sel = VE.selectedClip();

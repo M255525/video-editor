@@ -4,7 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>影片先生（課程教學版） — 影片編輯器</title>
-<link rel="stylesheet" href="css/style.css?v=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#38bdf8">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="影片先生(教學版)">
+<link rel="stylesheet" href="css/style.css?v=2">
 </head>
 <body>
 
@@ -199,6 +206,7 @@
     <span class="footer-warn">⚠ 本工具僅供教學、課程及個人使用，禁止未經授權公開發布、販售或商業化使用。</span>
     <span id="gateStatusMini" class="footer-credit"></span>
     <a class="footer-link" href="manual.html" target="_blank">📖 操作手冊</a>
+    <button type="button" id="installBtn" class="footer-link footer-install-btn">📲 加入主畫面</button>
     <span class="footer-credit">創作者：Mark Tsai</span>
   </footer>
 </div>
@@ -233,10 +241,64 @@
 <script src="js/state.js?v=2"></script>
 <script src="js/db.js?v=1"></script>
 <script src="js/media.js?v=5"></script>
-<script src="js/preview.js?v=3"></script>
+<script src="js/preview.js?v=4"></script>
 <script src="js/timeline.js?v=5"></script>
 <script src="js/panels.js?v=5"></script>
 <script src="js/export.js?v=5"></script>
 <script src="js/main.js?v=3"></script>
+
+<script>
+/* 加入主畫面（PWA）— 獨立運作，跟頁首跑馬燈／序號閘門／上方 VE 命名空間都無關，重用 VE.toast 顯示提示 */
+(function () {
+  'use strict';
+  var deferredPrompt = null;
+  var btn = document.getElementById('installBtn');
+
+  var ua = navigator.userAgent || '';
+  var isIOSDevice = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var isMacDesktop = /Macintosh/.test(ua) && !isIOSDevice;
+  var isSafariEngine = /^((?!chrome|crios|fxios|edgios|android).)*safari/i.test(ua);
+  var isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+
+  function fallbackMessage() {
+    if (isIOSDevice) return '請點畫面上的「分享」圖示，選「加入主畫面」';
+    if (isMacDesktop && isSafariEngine) return '請用選單列「檔案」→「加入 Dock」（Safari 17 以上）';
+    return '目前瀏覽器不支援安裝，或已安裝過';
+  }
+
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+  });
+  window.addEventListener('appinstalled', function () {
+    deferredPrompt = null;
+  });
+
+  if (btn) {
+    if (isStandalone) {
+      btn.style.display = 'none';
+    } else {
+      btn.addEventListener('click', function () {
+        if (!deferredPrompt) {
+          if (window.VE && VE.toast) VE.toast(fallbackMessage()); else window.alert(fallbackMessage());
+          return;
+        }
+        try {
+          deferredPrompt.prompt();
+          deferredPrompt.userChoice.then(function () { deferredPrompt = null; });
+        } catch (e) {
+          if (window.VE && VE.toast) VE.toast(fallbackMessage()); else window.alert(fallbackMessage());
+        }
+      });
+    }
+  }
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('service-worker.js').catch(function () {});
+    });
+  }
+})();
+</script>
 </body>
 </html>
