@@ -2,6 +2,8 @@
 
 參考剪映（CapCut）桌面版的**瀏覽器端影片編輯器**（產品名「影片先生」，創作者 Mark Tsai；頁尾與匯出視窗固定顯示「僅供教學、課程及個人使用」警語，勿移除）。純前端、無 build step、無框架、無外部相依；以 `file://` 開啟或任何靜態伺服器託管皆可（`.claude/launch.json` 已有 `video-editor` 設定，port 8766）。建議使用 Chrome / Edge。
 
+**公開 GitHub repo（2026-08-19）**：<https://github.com/M255525/video-editor>。已啟用 GitHub Pages（`.github/workflows/deploy-pages.yml` 標準 Actions 部署，`path:'.'` 發布整個 repo 根目錄，比照 `ai-image-prompt-studio` 等工具的模式，不用 legacy branch-source），線上網址：<https://m255525.github.io/video-editor/>——發布的是**根目錄這個無序號限制的一般版**（使用者要求「免費公開成一般網頁」，跟教學版 `mrvideo_s/` 區隔開來）。因為 `path:'.'` 是整個 repo 根目錄，`mrvideo_s/`／`MrVideo/` 兩個子資料夾也會一併變成可透過網址直接瀏覽（例如 `.../mrvideo_s/index.html`），這是刻意接受的行為（沒有敏感內容，兩者都只是各自獨立運作的靜態頁面，只是沒有從首頁連結過去）。**額外好處**：GitHub Pages 走 `https://`，屬於瀏覽器認定的安全情境（secure context），比透過 `file://` 開啟或桌面版 exe 更有機會啟用快速匯出所需的 WebCodecs API（`file://` 底下部分瀏覽器版本可能不判定為安全情境，導致自動退回較慢的即時錄製匯出）。
+
 ## 架構
 
 - **模組化 classic script**：所有 JS 掛在共用命名空間 `window.VE`，`index.html` 以固定順序載入（順序即依賴順序）：
