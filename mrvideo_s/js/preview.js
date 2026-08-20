@@ -237,7 +237,9 @@
     var tracks = p.tracks;
     for (var i = tracks.length - 1; i >= 0; i--) {
       var tr = tracks[i];
-      if (tr.type === 'audio' || tr.muted) continue;
+      /* 軌道「靜音」只影響聲音（見 effVolume 的 track.muted 判斷），不影響畫面——
+         靜音一個影片軌時，該軌的畫面仍應正常顯示，只是不出聲。 */
+      if (tr.type === 'audio') continue;
       var clip = VE.clipAt(tr, t);
       if (clip) drawWithTransition(tr, clip, t);
     }

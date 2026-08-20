@@ -122,7 +122,7 @@
       var mute = document.createElement('button');
       mute.className = 'th-mute' + (tr.muted ? ' on' : '');
       mute.textContent = tr.muted ? '🔇' : '🔊';
-      mute.title = tr.muted ? '取消靜音/隱藏' : '靜音/隱藏此軌';
+      mute.title = tr.muted ? '取消靜音' : '靜音此軌（畫面仍會正常顯示，只是不出聲）';
       mute.onclick = function () {
         tr.muted = !tr.muted;
         VE.commit(); VE.renderTimeline(); VE.drawFrame();

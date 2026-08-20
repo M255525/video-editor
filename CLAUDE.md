@@ -118,6 +118,14 @@
 
 右側屬性面板「音訊」區塊，選取**影片片段**時會多顯示「🎵 分離音訊到獨立音軌」按鈕（`js/panels.js` `buildAudioSection`；音訊片段本身沒有畫面可分離，不顯示此按鈕）。`VE.detachAudio(clip)`（`js/media.js`，緊鄰 `overlaps`/`trackEnd` 附近，會重用這兩個既有 helper）：在同時間區段找一個沒有重疊的既有音訊軌，找不到就新增一軌（命名規則比照 `addMediaToTimeline` 的「音訊 N」），建立一個 `type:'audio'`、**同一個 `mediaId`**（沿用同一份影片檔案，`<audio>` 元素直接吃該檔案的音軌，不需要額外抽取/轉檔）、`start/duration/in/speed/curve/volume/fadeIn/fadeOut` 皆複製自原片段的新片段放進去，並把**原本的影片片段設為 `muted:true`**（避免播放/匯出時聲音疊兩次——`preview.js`／`export.js` 對每個片段的音量/靜音判斷本來就是逐片段獨立的，不需要額外改動這兩支檔案）。新片段自動被選取，方便接著單獨調整音量/淡入淡出或直接刪除。已用 Playwright 端到端驗證：合成一支帶靜音音軌的 webm 測試影片匯入→加到時間軸→點擊真正的 DOM 按鈕（非直接呼叫 API）→確認 toast 文字、音訊軌新增了對應片段、原影片片段 `muted` 變 `true`、新片段被選取；另外確認選取音訊片段時面板上不會出現這顆按鈕。`mrvideo_s` 教學版同步套用（`js/media.js`／`js/panels.js` 皆逐位元組相同的改動）。
 
+## 軌道靜音誤把畫面也隱藏掉（2026-08-20 修正）
+
+使用者回報「按下靜音時候，是沒有聲音但是螢幕變成黑幕」。根因：軌道標頭的 🔇/🔊 按鈕原始設計是**靜音同時也隱藏整軌**（`manual.html` 原本就寫明「影片軌按下＝整軌隱藏」，`VE.drawFrame()` 的軌道迴圈用 `if (tr.type === 'audio' || tr.muted) continue;` 同一個條件判斷同時決定「要不要畫」與「要不要出聲」）——對音訊軌沒差（本來就沒畫面），但對**影片軌**而言，靜音會連畫面一起消失，變成使用者看到的「沒聲音但整個畫面變黑」（因為 `drawFrame()` 一開始固定先 `fillRect` 塗滿黑色背景，被隱藏的軌道底下沒有任何東西可畫，只剩下這片黑）。**注意：這跟片段層級的「靜音」勾選框（`js/panels.js` `buildAudioSection` 的 `clip.muted`）無關**——那個只影響 `effVolume()` 的音量計算，從未被任何繪製邏輯讀取，單一片段靜音本來就不會、也沒有被這次修正影響。
+
+修法：把「靜音」與「隱藏」拆開，軌道靜音只透過 `effVolume()`（`track.muted || clip.muted` 判斷式，未改動）影響聲音，`VE.drawFrame()`（`js/preview.js`）與匯出流程的視覺 seek 預備函式 `seekVisualsTo()`（`js/export.js`）的軌道迴圈都改成只用 `tr.type === 'audio'` 判斷要不要跳過繪製/seek，拿掉 `|| tr.muted` 這個條件——靜音一個影片軌後，畫面仍會正常顯示，只是不出聲。`export.js` 另外兩處 `tr.muted` 判斷（`collectAudibleClips()` 蒐集要混音的片段、`fastExport()` 蒐集匯出音軌）本來就只跟聲音有關，未改動。軌道標頭按鈕的 tooltip 文字（`js/timeline.js`）與 `manual.html` 的說明段落同步更新為「靜音此軌（畫面仍會正常顯示，只是不出聲）」，拿掉「隱藏」的敘述。
+
+已用 Playwright 對真實可 seek 的 mp4 測試影片端到端驗證：靜音前後在同一個時間點對畫布中心像素採樣，兩者完全相同（`[90,89,132,255]` 不變），確認畫面不再消失；`track.muted` 狀態與按鈕 tooltip 文字也正確切換。這次順便發現並修正了另一個問題：**先前實作「分離音訊」功能（見上方章節）時忘記同步調高 `index.html` 裡各 JS 檔案的 `?v=` 破快取版號**，導致瀏覽器可能持續使用舊版 `media.js`/`panels.js`（`?v=6`）而看不到新功能——這次一併把 `media.js`／`panels.js`／`preview.js`／`timeline.js`／`export.js` 的版號都調高，往後每次改動這幾支檔案都要記得同步調高對應版號（這點在根目錄 `CLAUDE.md`「架構」小節已有提醒，這次是實際漏掉的教訓）。`mrvideo_s` 教學版同步套用相同修正（`js/timeline.js`／`js/preview.js`／`js/export.js`／`manual.html`／`index.html` 版號）。
+
 ## 已知限制
 
 - 快速匯出需要 WebCodecs（Chrome/Edge）＋ CDN 載入 mp4-muxer；兩者缺一自動退回即時錄製（耗時＝影片長度）。快速匯出中音訊的曲線變速以平均速率近似。

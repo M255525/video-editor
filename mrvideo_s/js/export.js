@@ -428,7 +428,8 @@
   function seekVisualsTo(t) {
     var waits = [];
     VE.state.project.tracks.forEach(function (tr) {
-      if (tr.type === 'audio' || tr.muted) return;
+      /* 軌道靜音不影響畫面（見 preview.js drawFrame 同樣的修正）——靜音的影片軌仍要正常 seek/繪製 */
+      if (tr.type === 'audio') return;
       tr.clips.forEach(function (clip) {
         if (clip.type !== 'video') return;
         if (t < clip.start - 0.05 || t > clip.start + clip.duration + 1) return;
