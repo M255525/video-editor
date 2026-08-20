@@ -411,6 +411,32 @@
     return clip;
   };
 
+  /** 把影片片段的聲音分離成獨立的音訊片段（放到音訊軌），原影片片段自動靜音避免聲音播兩次 */
+  VE.detachAudio = function (clip) {
+    if (!clip || clip.type !== 'video') return;
+    var p = VE.state.project;
+    var start = clip.start, dur = clip.duration;
+    var track = p.tracks.filter(function (t) { return t.type === 'audio' && !overlaps(t, start, dur, null); })[0];
+    if (!track) {
+      var count = p.tracks.filter(function (t) { return t.type === 'audio'; }).length;
+      track = VE.newTrack('audio', '音訊 ' + (count + 1));
+      p.tracks.push(track);
+    }
+    var audioClip = VE.newClip({ type: 'audio', mediaId: clip.mediaId, start: start, duration: dur, in: clip.in });
+    audioClip.speed = clip.speed;
+    audioClip.curve = clip.curve;
+    audioClip.volume = clip.volume;
+    audioClip.fadeIn = clip.fadeIn;
+    audioClip.fadeOut = clip.fadeOut;
+    track.clips.push(audioClip);
+    clip.muted = true;
+    VE.state.selection = audioClip.id;
+    VE.commit();
+    VE.refreshAll();
+    VE.toast('已將聲音分離到獨立音軌，原影片片段已自動靜音');
+    return audioClip;
+  };
+
   function trackEnd(track) {
     var e = 0;
     track.clips.forEach(function (c) { e = Math.max(e, c.start + c.duration); });

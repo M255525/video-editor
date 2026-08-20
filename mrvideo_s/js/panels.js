@@ -437,6 +437,12 @@
     sec.appendChild(row('靜音', mute));
     sec.appendChild(row('淡入 s', num(clip.fadeIn, 0, 30, 0.1, function (v) { clip.fadeIn = Math.max(0, v); })));
     sec.appendChild(row('淡出 s', num(clip.fadeOut, 0, 30, 0.1, function (v) { clip.fadeOut = Math.max(0, v); })));
+    if (clip.type === 'video') {
+      var detachBtn = h('button', 'prop-btn', '🎵 分離音訊到獨立音軌');
+      detachBtn.title = '把此片段的聲音分離成獨立的音訊片段，原影片片段自動靜音';
+      detachBtn.onclick = function () { VE.detachAudio(clip); };
+      sec.appendChild(detachBtn);
+    }
     box.appendChild(sec);
   }
 
