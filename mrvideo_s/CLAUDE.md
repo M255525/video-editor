@@ -27,6 +27,8 @@
 
 跟根目錄版本（見 `../CLAUDE.md`）同一套邏輯，直接複製過來套用：`#marqueeBar` 是 `#app` 裡第二個 flex 子項（第一個是 2026-08-19 新增的 `#licenseBar`），跟序號驗證、下方 VE 命名空間都無關的獨立 `<script>`。**刻意選擇跟共用跑馬燈端點直接呼叫，沒有整合進 `js/license-gate.js` 的序號驗證流程**——本工具的序號驗證是打自己獨立的 Apps Script（見上方「部署狀態」），跟這份共用跑馬燈 Google Sheet 完全是两回事；`localStorage` key `ve_marquee`，每 20 分鐘重抓一次。**2026-08-19 後：全螢幕鎖定遮罩已移除，跑馬燈跟頁面其他內容一樣一開始就看得到**，不再有「鎖定畫面時被擋住」的視覺差異（這點跟舊版行為不同，也跟 `AIvideo_studio` 趨於一致）。改跑馬燈內容直接編輯共用 Sheet 即可：<https://docs.google.com/spreadsheets/d/1sSBXW2dAc-4u0j21Q72MzNEBIhDccShhr1iJcAdG0UE/edit>。**改完後記得重新執行 `影片先生_V1/build.ps1` 才會反映到安裝包裡**。
 
+**2026-08-20 更新（比照 `ai-video-studio` 系列同一次改動，`Code.gs` 未改動、不需重新部署）**：`render()` 新增 `lastKey`（`JSON.stringify(items)`）比對，每 20 分鐘背景重抓時內容沒變就不重繪，CSS animation 不再被重置歸零重跑；新增 `appendParsedText()`／`buildTrackContent()` 支援 `[文字](https://...)` 連結語法（`createTextNode` 組 DOM，避免 XSS），沒有改 Google Sheet 欄位結構、資料格式仍是純字串陣列，向下相容。此次只改了 `mrvideo_s/index.html`（GitHub Pages 內容）並 commit＋push，**`影片先生_V1/build.ps1` 尚未重新執行**——桌面版安裝包還沒反映這次改動，需要時再重建。
+
 ## 匯出閃爍／黑屏修正（2026-08-19 新增，與根目錄版本同一套邏輯，同一天內修了三次）
 
 跟根目錄版本一樣修正了 `export.js` 的 `seekVisualsTo()`：黑屏成因有兩層——① 片段剛匯入還沒讀過就直接匯出（先等 `loadedmetadata` 才 seek）；② **時間軸中後段才第一次出現的片段，來源檔案在那之前完全沒被瀏覽器碰過，冷啟動的 seek 可能遠比 700ms 慢**（使用者實測案例：匯出到 1:28 才黑屏，精確對應某片段第一次出現的時間點）。中途一度加了 `requestVideoFrameCallback` 想解決閃爍，後來用真實長 GOP 測試影片重新驗證證實這個方向是錯的且有害（已拿掉）。**最終做法**：新增 `preloadVideoElements()` 在匯出一開始就先觸發所有片段背景緩衝＋逾時大幅放寬（seeked 700→4000ms、loadedmetadata 2000→5000ms）。詳細的三次踩坑過程見 `../CLAUDE.md` 同名章節，這裡不重複。已用同一套嚴謹驗證（雙片段冷啟動交界情境、真實長 GOP 測試影片、ffmpeg 逐格量測色彩）重新確認這裡零黑幀零錯幀。
