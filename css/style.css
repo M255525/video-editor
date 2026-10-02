@@ -31,6 +31,7 @@ input,select,textarea{font-family:var(--font)}
 #marqueeBar{flex:0 0 auto;height:30px;background:var(--panel);border-bottom:1px solid var(--border);overflow:hidden;display:none;align-items:center}
 #marqueeBar.show{display:flex}
 #marqueeTrack{display:inline-block;white-space:nowrap;padding-left:100%;font-size:13px;font-weight:600;color:var(--accent);animation:marquee-scroll 30s linear infinite}
+#marqueeBar:hover #marqueeTrack{animation-play-state:paused}
 @keyframes marquee-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
 /* ═══ 頂部工具列 ═══ */
