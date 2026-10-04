@@ -70,18 +70,14 @@
     if (clip.type === 'video') {
       var entry = VE.ensureClipEl(clip);
       if (entry && entry.el.readyState >= 2 && entry.el.videoWidth) {
-        var vw = entry.el.videoWidth, vh = entry.el.videoHeight;
-        var s = Math.min(W / vw, H / vh) * tr.scale;
-        ctx.drawImage(entry.el, -vw * s / 2, -vh * s / 2, vw * s, vh * s);
+        drawMediaFit(entry.el, entry.el.videoWidth, entry.el.videoHeight, clip, W, H, tr.scale);
       } else {
         drawPlaceholder(clip, W, H);
       }
     } else if (clip.type === 'image') {
       var img = VE.getImage(clip.mediaId);
       if (img) {
-        var iw = img.naturalWidth, ih = img.naturalHeight;
-        var si = Math.min(W / iw, H / ih) * tr.scale;
-        ctx.drawImage(img, -iw * si / 2, -ih * si / 2, iw * si, ih * si);
+        drawMediaFit(img, img.naturalWidth, img.naturalHeight, clip, W, H, tr.scale);
       } else {
         drawPlaceholder(clip, W, H);
       }
@@ -95,6 +91,36 @@
       ctx.fillText(clip.emoji || '😀', 0, 0);
     }
     ctx.restore();
+  }
+
+  /* ── 取景（裁切）：直式 9:16 畫布預設從原始 16:9 畫面裁出畫布比例的範圍，而非整張縮小加黑邊 ──
+     clip.fit：'cover'＝裁切填滿、'contain'＝完整顯示（可能有黑邊）、未設定＝自動（直式畫布 cover，其餘 contain）
+     clip.cropX / cropY：裁切框在原始畫面中可移動範圍內的位置（0＝最左/上、0.5＝置中、1＝最右/下） */
+  VE.clipFit = function (clip) {
+    if (clip.fit === 'cover' || clip.fit === 'contain') return clip.fit;
+    var p = VE.state.project;
+    return p.height > p.width ? 'cover' : 'contain';
+  };
+
+  /** 裁切框在原始素材像素座標中的矩形（sw/sh＝素材寬高） */
+  VE.cropRect = function (clip, sw, sh) {
+    var p = VE.state.project;
+    var ca = p.width / p.height;
+    var cw = sw, ch = sh;
+    if (sw / sh > ca) cw = sh * ca; else ch = sw / ca;
+    var cx = clip.cropX == null ? 0.5 : VE.clamp(clip.cropX, 0, 1);
+    var cy = clip.cropY == null ? 0.5 : VE.clamp(clip.cropY, 0, 1);
+    return { x: (sw - cw) * cx, y: (sh - ch) * cy, w: cw, h: ch };
+  };
+
+  function drawMediaFit(src, sw, sh, clip, W, H, scale) {
+    if (VE.clipFit(clip) === 'cover') {
+      var r = VE.cropRect(clip, sw, sh);
+      ctx.drawImage(src, r.x, r.y, r.w, r.h, -W * scale / 2, -H * scale / 2, W * scale, H * scale);
+    } else {
+      var s = Math.min(W / sw, H / sh) * scale;
+      ctx.drawImage(src, -sw * s / 2, -sh * s / 2, sw * s, sh * s);
+    }
   }
 
   function drawPlaceholder(clip, W, H) {
@@ -250,6 +276,7 @@
       if (sel && sel.clip.type !== 'audio' && t >= sel.clip.start && t < sel.clip.start + sel.clip.duration) {
         drawSelectionBox(sel.clip, t);
       }
+      if (VE.onFrameDrawn) VE.onFrameDrawn();   // 屬性面板的取景縮圖跟著目前畫面更新
     }
   };
 
@@ -257,6 +284,7 @@
     var p = VE.state.project, W = p.width, H = p.height;
     if (clip.type === 'video' || clip.type === 'image') {
       var m = VE.state.media[clip.mediaId];
+      if (VE.clipFit(clip) === 'cover') return { w: W, h: H };
       if (m && m.width) {
         var s = Math.min(W / m.width, H / m.height);
         return { w: m.width * s, h: m.height * s };

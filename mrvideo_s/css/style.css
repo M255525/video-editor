@@ -249,3 +249,7 @@ body[data-drag-type="audio"] .track-row[data-track-type="audio"]{
 .lic-status.ok{background:rgba(56,189,248,.12);color:var(--accent)}
 .lic-status.pending{opacity:.85}
 .lic-status.bad{background:rgba(248,113,113,.12);color:var(--danger)}
+
+.crop-hint{font-size:11px;color:var(--dim);margin:2px 0 6px;line-height:1.5}
+.crop-mini{display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:5px;cursor:grab;touch-action:none;margin-bottom:8px;background:#000}
+.crop-mini:active{cursor:grabbing}

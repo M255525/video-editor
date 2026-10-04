@@ -267,6 +267,7 @@
       buildSpeedSection(box, clip, track);
       buildAudioSection(box, clip);
     }
+    if (clip.type === 'video' || clip.type === 'image') buildCropSection(box, clip);
     if (clip.type === 'video' || clip.type === 'image') buildFilterSection(box, clip);
     if (clip.type !== 'audio') buildTransitionSection(box, clip);
 
@@ -278,6 +279,130 @@
     secDel.appendChild(delBtn);
     box.appendChild(secDel);
   };
+
+  /* ── 取景範圍（從原始畫面裁出畫布比例，例如 16:9 素材裁成 9:16 直式） ── */
+  VE.onFrameDrawn = null;
+
+  function cropSource(clip) {
+    if (clip.type === 'video') {
+      var e = VE.ensureClipEl(clip);
+      if (e && e.el.readyState >= 2 && e.el.videoWidth) return { src: e.el, w: e.el.videoWidth, h: e.el.videoHeight };
+    } else if (clip.type === 'image') {
+      var img = VE.getImage(clip.mediaId);
+      if (img && img.naturalWidth) return { src: img, w: img.naturalWidth, h: img.naturalHeight };
+    }
+    var m = VE.state.media[clip.mediaId];
+    if (m && m.width) return { src: null, w: m.width, h: m.height };
+    return null;
+  }
+
+  function buildCropSection(box, clip) {
+    VE.onFrameDrawn = null;
+    var sec = h('div', 'props-section');
+    sec.appendChild(h('h4', null, '取景範圍（裁切）'));
+
+    var fitSel = document.createElement('select');
+    [['', '自動（直式畫布裁切填滿）'], ['cover', '裁切填滿畫布'], ['contain', '完整顯示（加黑邊）']].forEach(function (o) {
+      var op = document.createElement('option');
+      op.value = o[0]; op.textContent = o[1];
+      fitSel.appendChild(op);
+    });
+    fitSel.value = clip.fit || '';
+    fitSel.onchange = function () {
+      if (fitSel.value) clip.fit = fitSel.value; else delete clip.fit;
+      VE.commit(); VE.drawFrame(); VE.renderProps();
+    };
+    sec.appendChild(row('模式', fitSel));
+    box.appendChild(sec);
+
+    if (VE.clipFit(clip) !== 'cover') return;
+    var info = cropSource(clip);
+    if (!info) return;
+    var p = VE.state.project;
+    var r0 = VE.cropRect(clip, info.w, info.h);
+    var canPanX = info.w - r0.w > 1, canPanY = info.h - r0.h > 1;
+    if (!canPanX && !canPanY) {
+      sec.appendChild(h('div', 'crop-hint', '素材比例與畫布相同，不需裁切。'));
+      return;
+    }
+    sec.appendChild(h('div', 'crop-hint', '在下方原始畫面中拖曳亮框，選擇要放進 ' +
+      (p.height > p.width ? '直式' : '') + '畫布的範圍：'));
+
+    var mini = document.createElement('canvas');
+    mini.className = 'crop-mini';
+    mini.width = 320;
+    mini.height = Math.max(40, Math.round(320 * info.h / info.w));
+    sec.appendChild(mini);
+    var mctx = mini.getContext('2d');
+
+    function drawMini() {
+      if (!mini.isConnected) { if (VE.onFrameDrawn === drawMini) VE.onFrameDrawn = null; return; }
+      var cur = cropSource(clip) || info;
+      var k = mini.width / info.w;
+      var r = VE.cropRect(clip, info.w, info.h);
+      mctx.fillStyle = '#000';
+      mctx.fillRect(0, 0, mini.width, mini.height);
+      if (cur.src) { try { mctx.drawImage(cur.src, 0, 0, mini.width, mini.height); } catch (e) { /* 尚未可繪 */ } }
+      mctx.fillStyle = 'rgba(0,0,0,0.6)';
+      mctx.beginPath();
+      mctx.rect(0, 0, mini.width, mini.height);
+      mctx.rect(r.x * k, r.y * k, r.w * k, r.h * k);
+      mctx.fill('evenodd');
+      mctx.strokeStyle = '#38bdf8';
+      mctx.lineWidth = 2;
+      mctx.strokeRect(r.x * k + 1, r.y * k + 1, r.w * k - 2, r.h * k - 2);
+    }
+
+    var sliderX = null, sliderY = null;
+    function setFromPointer(ev) {
+      var rect = mini.getBoundingClientRect();
+      var px = (ev.clientX - rect.left) / rect.width * info.w;
+      var py = (ev.clientY - rect.top) / rect.height * info.h;
+      var r = VE.cropRect(clip, info.w, info.h);
+      if (canPanX) clip.cropX = VE.clamp((px - r.w / 2) / (info.w - r.w), 0, 1);
+      if (canPanY) clip.cropY = VE.clamp((py - r.h / 2) / (info.h - r.h), 0, 1);
+      if (sliderX) sliderX.value = Math.round((clip.cropX == null ? 0.5 : clip.cropX) * 100);
+      if (sliderY) sliderY.value = Math.round((clip.cropY == null ? 0.5 : clip.cropY) * 100);
+      VE.drawFrame();
+      drawMini();
+    }
+    mini.addEventListener('pointerdown', function (ev) {
+      mini.setPointerCapture(ev.pointerId);
+      setFromPointer(ev);
+      function move(e) { setFromPointer(e); }
+      function up() {
+        mini.removeEventListener('pointermove', move);
+        mini.removeEventListener('pointerup', up);
+        mini.removeEventListener('pointercancel', up);
+        VE.commit();
+      }
+      mini.addEventListener('pointermove', move);
+      mini.addEventListener('pointerup', up);
+      mini.addEventListener('pointercancel', up);
+    });
+
+    if (canPanX) {
+      sliderX = range(Math.round((clip.cropX == null ? 0.5 : clip.cropX) * 100), 0, 100, 1, function (v) {
+        clip.cropX = v / 100; VE.drawFrame(); drawMini();
+      });
+      sec.appendChild(row('左右', sliderX));
+    }
+    if (canPanY) {
+      sliderY = range(Math.round((clip.cropY == null ? 0.5 : clip.cropY) * 100), 0, 100, 1, function (v) {
+        clip.cropY = v / 100; VE.drawFrame(); drawMini();
+      });
+      sec.appendChild(row('上下', sliderY));
+    }
+    var center = h('button', 'prop-btn', '置中');
+    center.onclick = function () {
+      delete clip.cropX; delete clip.cropY;
+      VE.commit(); VE.drawFrame(); VE.renderProps();
+    };
+    sec.appendChild(center);
+
+    VE.onFrameDrawn = drawMini;
+    drawMini();
+  }
 
   /* ── 變換 ＋ 關鍵影格 ── */
   var KF_PROPS = [

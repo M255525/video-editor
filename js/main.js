@@ -60,6 +60,7 @@
       VE.resizeCanvas();
       VE.commit();
       VE.drawFrame();
+      VE.renderProps();
     });
 
     document.getElementById('btnNew').addEventListener('click', function () {
