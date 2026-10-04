@@ -86,20 +86,25 @@
   }
 
   /* ── 取景（裁切）：直式 9:16 畫布預設從原始 16:9 畫面裁出畫布比例的範圍，而非整張縮小加黑邊 ──
-     clip.fit：'cover'＝裁切填滿、'contain'＝完整顯示（可能有黑邊）、未設定＝自動（直式畫布 cover，其餘 contain）
-     clip.cropX / cropY：裁切框在原始畫面中可移動範圍內的位置（0＝最左/上、0.5＝置中、1＝最右/下） */
+     clip.fit：'cover'＝裁切填滿、'contain'＝完整顯示（可能有黑邊）、未設定＝自動（直式 9:16／方形 1:1 畫布 cover，橫式 16:9 contain）
+     clip.cropX / cropY：裁切框在原始畫面中可移動範圍內的位置（0＝最左/上、0.5＝置中、1＝最右/下）
+     clip.cropSize：裁切框大小，相對於「原始畫面能容納的最大畫布比例框」（1＝最大，越小＝放大取局部） */
   VE.clipFit = function (clip) {
     if (clip.fit === 'cover' || clip.fit === 'contain') return clip.fit;
     var p = VE.state.project;
-    return p.height > p.width ? 'cover' : 'contain';
+    return p.height >= p.width ? 'cover' : 'contain';
   };
 
   /** 裁切框在原始素材像素座標中的矩形（sw/sh＝素材寬高） */
+  VE.CROP_MIN_SIZE = 0.15;
+
   VE.cropRect = function (clip, sw, sh) {
     var p = VE.state.project;
     var ca = p.width / p.height;
     var cw = sw, ch = sh;
     if (sw / sh > ca) cw = sh * ca; else ch = sw / ca;
+    var sz = clip.cropSize == null ? 1 : VE.clamp(clip.cropSize, VE.CROP_MIN_SIZE, 1);
+    cw *= sz; ch *= sz;
     var cx = clip.cropX == null ? 0.5 : VE.clamp(clip.cropX, 0, 1);
     var cy = clip.cropY == null ? 0.5 : VE.clamp(clip.cropY, 0, 1);
     return { x: (sw - cw) * cx, y: (sh - ch) * cy, w: cw, h: ch };

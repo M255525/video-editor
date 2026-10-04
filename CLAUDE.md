@@ -55,12 +55,12 @@
 - 播放到結尾會自然停在最後一幀（沿用 `VE.play()`/`step()` 既有的播放結束邏輯），不會自動退出劇院模式，使用者可以重播或手動離開。
 - 已用 Playwright 端對端驗證：空時間軸擋下＋toast、進入後三個區塊確實隱藏且畫布變大、退出按鈕與 `Esc` 兩種離開方式都正確還原版面並暫停播放。`mrvideo_s` 教學版套用同一套邏輯（含頂部多了 `#licenseBar` 的情況，序號列不受影響維持可見）。
 
-## 直式取景／裁切（2026-10-04 新增）
+## 直式／方形取景裁切（2026-10-04 新增；同日追加框大小可調、1:1 比照）
 
 使用者要求「選 9:16 直式時，要從原本 16:9 的範圍去設定 9:16」——原本 video/image 一律 `Math.min` 等比縮放（contain），16:9 素材放進 9:16 畫布只剩中間一條加上下大黑邊。
 
-- `preview.js`：`VE.clipFit(clip)` 決定取景方式——`clip.fit` 為 `'cover'`/`'contain'` 時照設定，**未設定＝自動（直式畫布 cover，16:9／1:1 維持 contain）**，所以舊專案不用遷移、切到 9:16 就自動裁切。`VE.cropRect(clip, sw, sh)` 算出原始素材像素座標裡的裁切框（畫布比例；`clip.cropX/cropY` 0~1 為可移動範圍內的位置，預設 0.5 置中），`drawMediaFit()` 用 9 參數 `drawImage` 只畫那一塊；`contentSize()` 在 cover 時回傳整個畫布大小（選取框正確）。匯出走同一套 `drawFrame`，不需另改。
-- `panels.js` `buildCropSection()`：video/image 屬性面板「取景範圍（裁切）」——模式下拉（自動／裁切填滿／完整顯示）＋完整原始畫面縮圖（`.crop-mini`，畫布外區域壓暗、亮框為裁切範圍，pointer 拖曳移動亮框）＋左右/上下滑桿（只顯示可移動的方向）＋置中鈕。縮圖透過 `VE.onFrameDrawn` hook（`drawFrame` 暫停狀態結尾呼叫）跟著目前影格更新，面板重繪後舊 hook 會因 `isConnected` 自動失效。`main.js` 切換比例後會 `VE.renderProps()` 讓此區塊即時出現。
+- `preview.js`：`VE.clipFit(clip)` 決定取景方式——`clip.fit` 為 `'cover'`/`'contain'` 時照設定，**未設定＝自動（9:16 直式與 1:1 方形畫布 cover，16:9 維持 contain；判斷式 `height >= width`）**，所以舊專案不用遷移、切到 9:16 就自動裁切。`VE.cropRect(clip, sw, sh)` 算出原始素材像素座標裡的裁切框（畫布比例；`clip.cropX/cropY` 0~1 為可移動範圍內的位置，預設 0.5 置中；`clip.cropSize` 為框大小，相對於能容納的最大畫布比例框，下限 `VE.CROP_MIN_SIZE`=0.15，越小＝放大取局部），`drawMediaFit()` 用 9 參數 `drawImage` 只畫那一塊；`contentSize()` 在 cover 時回傳整個畫布大小（選取框正確）。匯出走同一套 `drawFrame`，不需另改。
+- `panels.js` `buildCropSection()`：video/image 屬性面板「取景範圍（裁切）」——模式下拉（自動／裁切填滿／完整顯示）＋完整原始畫面縮圖（`.crop-mini`，畫布外區域壓暗、亮框為裁切範圍，pointer 拖曳：按在四角握把＝以中心為基準縮放、框內＝相對位移、框外＝中心跳到該點；縮圖上滾輪也可縮放）＋範圍大小/左右/上下滑桿＋重設鈕。改大小時 `setSize()` 會維持中心點並重新夾回畫面內。縮圖透過 `VE.onFrameDrawn` hook（`drawFrame` 暫停狀態結尾呼叫）跟著目前影格更新，面板重繪後舊 hook 會因 `isConnected` 自動失效。`main.js` 切換比例後會 `VE.renderProps()` 讓此區塊即時出現。
 - 裁切位置是**片段層級的靜態值，不支援關鍵影格**（不做「鏡頭跟著主角移動」的動態裁切）；仍可疊加既有的變換縮放/位移。
 - 已用 Playwright 驗證（紅/綠/藍三等分 16:9 測試圖）：9:16 自動 cover 顯示中段、cropX 0/1 分別取到紅/藍、改 contain 回到黑邊、縮圖真實點擊會更新 cropX 並寫入 undo。根目錄版與 `mrvideo_s` 同步套用。
 

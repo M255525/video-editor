@@ -302,7 +302,7 @@
     sec.appendChild(h('h4', null, '取景範圍（裁切）'));
 
     var fitSel = document.createElement('select');
-    [['', '自動（直式畫布裁切填滿）'], ['cover', '裁切填滿畫布'], ['contain', '完整顯示（加黑邊）']].forEach(function (o) {
+    [['', '自動（直式／方形畫布裁切填滿）'], ['cover', '裁切填滿畫布'], ['contain', '完整顯示（加黑邊）']].forEach(function (o) {
       var op = document.createElement('option');
       op.value = o[0]; op.textContent = o[1];
       fitSel.appendChild(op);
@@ -319,14 +319,8 @@
     var info = cropSource(clip);
     if (!info) return;
     var p = VE.state.project;
-    var r0 = VE.cropRect(clip, info.w, info.h);
-    var canPanX = info.w - r0.w > 1, canPanY = info.h - r0.h > 1;
-    if (!canPanX && !canPanY) {
-      sec.appendChild(h('div', 'crop-hint', '素材比例與畫布相同，不需裁切。'));
-      return;
-    }
-    sec.appendChild(h('div', 'crop-hint', '在下方原始畫面中拖曳亮框，選擇要放進 ' +
-      (p.height > p.width ? '直式' : '') + '畫布的範圍：'));
+    sec.appendChild(h('div', 'crop-hint', '下方是完整原始畫面，亮框＝要放進' +
+      (p.height > p.width ? '直式' : p.height === p.width ? '方形' : '') + '畫布的範圍：拖曳框內移動位置、拖曳四角（或滾輪）調整大小，框越小畫面放得越大。'));
 
     var mini = document.createElement('canvas');
     mini.className = 'crop-mini';
@@ -334,6 +328,7 @@
     mini.height = Math.max(40, Math.round(320 * info.h / info.w));
     sec.appendChild(mini);
     var mctx = mini.getContext('2d');
+    var HANDLE = 7;   // 縮圖上四角握把半徑（縮圖像素）
 
     function drawMini() {
       if (!mini.isConnected) { if (VE.onFrameDrawn === drawMini) VE.onFrameDrawn = null; return; }
@@ -351,25 +346,74 @@
       mctx.strokeStyle = '#38bdf8';
       mctx.lineWidth = 2;
       mctx.strokeRect(r.x * k + 1, r.y * k + 1, r.w * k - 2, r.h * k - 2);
+      mctx.fillStyle = '#38bdf8';
+      [[r.x, r.y], [r.x + r.w, r.y], [r.x, r.y + r.h], [r.x + r.w, r.y + r.h]].forEach(function (c) {
+        var hx = VE.clamp(c[0] * k, HANDLE, mini.width - HANDLE), hy = VE.clamp(c[1] * k, HANDLE, mini.height - HANDLE);
+        mctx.fillRect(hx - HANDLE + 2, hy - HANDLE + 2, HANDLE * 2 - 4, HANDLE * 2 - 4);
+      });
     }
 
-    var sliderX = null, sliderY = null;
-    function setFromPointer(ev) {
-      var rect = mini.getBoundingClientRect();
-      var px = (ev.clientX - rect.left) / rect.width * info.w;
-      var py = (ev.clientY - rect.top) / rect.height * info.h;
-      var r = VE.cropRect(clip, info.w, info.h);
-      if (canPanX) clip.cropX = VE.clamp((px - r.w / 2) / (info.w - r.w), 0, 1);
-      if (canPanY) clip.cropY = VE.clamp((py - r.h / 2) / (info.h - r.h), 0, 1);
-      if (sliderX) sliderX.value = Math.round((clip.cropX == null ? 0.5 : clip.cropX) * 100);
-      if (sliderY) sliderY.value = Math.round((clip.cropY == null ? 0.5 : clip.cropY) * 100);
-      VE.drawFrame();
-      drawMini();
+    var sliderX, sliderY, sliderS;
+    function syncSliders() {
+      sliderX.value = Math.round((clip.cropX == null ? 0.5 : clip.cropX) * 100);
+      sliderY.value = Math.round((clip.cropY == null ? 0.5 : clip.cropY) * 100);
+      sliderS.value = Math.round((clip.cropSize == null ? 1 : clip.cropSize) * 100);
     }
+    function refresh() { syncSliders(); VE.drawFrame(); drawMini(); }
+
+    /** 把裁切框中心放到原始畫面座標 (cx, cy)，自動夾在畫面內 */
+    function setCenter(cx, cy) {
+      var r = VE.cropRect(clip, info.w, info.h);
+      clip.cropX = info.w - r.w > 0.5 ? VE.clamp((cx - r.w / 2) / (info.w - r.w), 0, 1) : 0.5;
+      clip.cropY = info.h - r.h > 0.5 ? VE.clamp((cy - r.h / 2) / (info.h - r.h), 0, 1) : 0.5;
+    }
+    /** 改大小但維持目前中心點 */
+    function setSize(sz) {
+      var r = VE.cropRect(clip, info.w, info.h);
+      var cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      clip.cropSize = VE.clamp(sz, VE.CROP_MIN_SIZE, 1);
+      setCenter(cx, cy);
+    }
+    function maxBox() {   // 大小為 1 時的框寬高
+      var ca = p.width / p.height;
+      return info.w / info.h > ca ? { w: info.h * ca, h: info.h } : { w: info.w, h: info.w / ca };
+    }
+
+    function srcPoint(ev) {
+      var rect = mini.getBoundingClientRect();
+      return {
+        x: (ev.clientX - rect.left) / rect.width * info.w,
+        y: (ev.clientY - rect.top) / rect.height * info.h,
+        tol: HANDLE * 1.6 * info.w / rect.width   // 握把命中容許範圍（原始畫面像素）
+      };
+    }
+
     mini.addEventListener('pointerdown', function (ev) {
-      mini.setPointerCapture(ev.pointerId);
-      setFromPointer(ev);
-      function move(e) { setFromPointer(e); }
+      try { mini.setPointerCapture(ev.pointerId); } catch (e) { /* 合成事件 */ }
+      var pt = srcPoint(ev);
+      var r = VE.cropRect(clip, info.w, info.h);
+      var cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      var nearX = Math.abs(pt.x - r.x) <= pt.tol || Math.abs(pt.x - (r.x + r.w)) <= pt.tol;
+      var nearY = Math.abs(pt.y - r.y) <= pt.tol || Math.abs(pt.y - (r.y + r.h)) <= pt.tol;
+      var mode, offX = 0, offY = 0;
+      if (nearX && nearY) {
+        mode = 'resize';
+      } else if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) {
+        mode = 'move'; offX = pt.x - cx; offY = pt.y - cy;
+      } else {
+        mode = 'move'; setCenter(pt.x, pt.y); refresh();
+      }
+      function move(e) {
+        var q = srcPoint(e);
+        if (mode === 'resize') {
+          var mb = maxBox();
+          setSize(Math.max(2 * Math.abs(q.x - cx) / mb.w, 2 * Math.abs(q.y - cy) / mb.h));
+          setCenter(cx, cy);
+        } else {
+          setCenter(q.x - offX, q.y - offY);
+        }
+        refresh();
+      }
       function up() {
         mini.removeEventListener('pointermove', move);
         mini.removeEventListener('pointerup', up);
@@ -380,25 +424,28 @@
       mini.addEventListener('pointerup', up);
       mini.addEventListener('pointercancel', up);
     });
+    var wheelCommit = VE.debounce(function () { VE.commit(); }, 400);
+    mini.addEventListener('wheel', function (ev) {
+      ev.preventDefault();
+      setSize((clip.cropSize == null ? 1 : clip.cropSize) * (ev.deltaY > 0 ? 1.06 : 1 / 1.06));
+      refresh();
+      wheelCommit();
+    }, { passive: false });
 
-    if (canPanX) {
-      sliderX = range(Math.round((clip.cropX == null ? 0.5 : clip.cropX) * 100), 0, 100, 1, function (v) {
-        clip.cropX = v / 100; VE.drawFrame(); drawMini();
-      });
-      sec.appendChild(row('左右', sliderX));
-    }
-    if (canPanY) {
-      sliderY = range(Math.round((clip.cropY == null ? 0.5 : clip.cropY) * 100), 0, 100, 1, function (v) {
-        clip.cropY = v / 100; VE.drawFrame(); drawMini();
-      });
-      sec.appendChild(row('上下', sliderY));
-    }
-    var center = h('button', 'prop-btn', '置中');
-    center.onclick = function () {
-      delete clip.cropX; delete clip.cropY;
+    sliderS = range(100, Math.round(VE.CROP_MIN_SIZE * 100), 100, 1, function (v) { setSize(v / 100); refresh(); });
+    sec.appendChild(row('範圍大小', sliderS));
+    sliderX = range(50, 0, 100, 1, function (v) { clip.cropX = v / 100; VE.drawFrame(); drawMini(); });
+    sec.appendChild(row('左右', sliderX));
+    sliderY = range(50, 0, 100, 1, function (v) { clip.cropY = v / 100; VE.drawFrame(); drawMini(); });
+    sec.appendChild(row('上下', sliderY));
+    syncSliders();
+
+    var reset = h('button', 'prop-btn', '重設（最大、置中）');
+    reset.onclick = function () {
+      delete clip.cropX; delete clip.cropY; delete clip.cropSize;
       VE.commit(); VE.drawFrame(); VE.renderProps();
     };
-    sec.appendChild(center);
+    sec.appendChild(reset);
 
     VE.onFrameDrawn = drawMini;
     drawMini();
