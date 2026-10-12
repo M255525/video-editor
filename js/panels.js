@@ -34,6 +34,14 @@
     vignet:{ name: '暗角聚焦', icon: '🔦', v: { brightness: 0, contrast: 0.05, saturate: 0, hue: 0, blur: 0, vignette: 0.65 } },
     invert:{ name: '負片', icon: '🔄', v: { brightness: 0, contrast: 0, saturate: 0, hue: 0, blur: 0, invert: 1 } }
   };
+  /* 動態縮放（clip.zoomFx）跟調色濾鏡分開存，套用調色預設不會清掉縮放 */
+  var ZOOM_FX = {
+    none: { name: '無縮放', icon: '⏹️' },
+    in:   { name: '放大推進 Zoom In', icon: '🔍' },
+    out:  { name: '縮小拉遠 Zoom Out', icon: '🔭' }
+  };
+  var ZOOM_DEFAULT_AMOUNT = 0.3;
+
   var FILTER_KEYS = ['brightness', 'contrast', 'saturate', 'hue', 'blur', 'sepia', 'invert', 'vignette'];
 
   /** 依 FILTER_KEYS 產生完整濾鏡物件（缺的參數補 0） */
@@ -62,8 +70,6 @@
     pushleft:  { name: '推移 ←', icon: '⏪', group: '推移' },
     pushdown:  { name: '推移 ↓', icon: '⏬', group: '推移' },
     pushup:    { name: '推移 ↑', icon: '⏫', group: '推移' },
-    zoomin:    { name: '放大淡入', icon: '🔍', group: '特效' },
-    zoomout:   { name: '衝出淡出', icon: '💨', group: '特效' },
     circle:    { name: '圓形展開', icon: '⭕', group: '特效' },
     clock:     { name: '時鐘掃描', icon: '🕐', group: '特效' },
     door:      { name: '開門', icon: '🚪', group: '特效' },
@@ -145,6 +151,17 @@
 
     /* 濾鏡卡片 */
     var fc = document.getElementById('filterCards');
+    fc.appendChild(h('div', 'fx-group', '動態縮放'));
+    Object.keys(ZOOM_FX).forEach(function (key) {
+      var z = ZOOM_FX[key];
+      var card = document.createElement('div');
+      card.className = 'fx-card';
+      card.dataset.zoom = key;
+      card.innerHTML = '<div class="fx-icon">' + z.icon + '</div><div class="fx-name">' + z.name + '</div>';
+      card.onclick = function () { applyZoomFx(key); };
+      fc.appendChild(card);
+    });
+    fc.appendChild(h('div', 'fx-group', '調色濾鏡'));
     Object.keys(FILTER_PRESETS).forEach(function (key) {
       var f = FILTER_PRESETS[key];
       var card = document.createElement('div');
@@ -208,6 +225,19 @@
     VE.refreshAll();
   }
 
+  function applyZoomFx(key) {
+    var sel = VE.selectedClip();
+    if (!sel || (sel.clip.type !== 'video' && sel.clip.type !== 'image')) {
+      VE.toast('請先選取影片或圖片片段'); return;
+    }
+    var amt = sel.clip.zoomFx && sel.clip.zoomFx.amount != null ? sel.clip.zoomFx.amount : ZOOM_DEFAULT_AMOUNT;
+    sel.clip.zoomFx = { type: key, amount: amt };
+    VE.commit();
+    VE.drawFrame();
+    VE.renderProps();
+    highlightCards();
+  }
+
   function applyFilterPreset(key) {
     var sel = VE.selectedClip();
     if (!sel || (sel.clip.type !== 'video' && sel.clip.type !== 'image')) {
@@ -237,8 +267,12 @@
 
   function highlightCards() {
     var sel = VE.selectedClip();
-    document.querySelectorAll('#filterCards .fx-card').forEach(function (c) {
+    document.querySelectorAll('#filterCards .fx-card[data-filter]').forEach(function (c) {
       c.classList.toggle('active', !!sel && sel.clip.filterPreset === c.dataset.filter);
+    });
+    document.querySelectorAll('#filterCards .fx-card[data-zoom]').forEach(function (c) {
+      var zt = sel && sel.clip.zoomFx ? sel.clip.zoomFx.type : 'none';
+      c.classList.toggle('active', !!sel && (sel.clip.type === 'video' || sel.clip.type === 'image') && zt === c.dataset.zoom);
     });
     document.querySelectorAll('#transitionCards .fx-card').forEach(function (c) {
       c.classList.toggle('active', !!sel && sel.clip.transition && sel.clip.transition.type === c.dataset.transition);
@@ -660,6 +694,36 @@
       VE.commit(); VE.renderProps(); VE.drawFrame();
     };
     sec.appendChild(reset);
+    box.appendChild(sec);
+    buildZoomSection(box, clip);
+  }
+
+  /* ── 動態縮放 ── */
+  function buildZoomSection(box, clip) {
+    var z = clip.zoomFx || { type: 'none', amount: ZOOM_DEFAULT_AMOUNT };
+    var sec = h('div', 'props-section');
+    sec.appendChild(h('h4', null, '動態縮放（Zoom In／Out）'));
+    var selEl = document.createElement('select');
+    Object.keys(ZOOM_FX).forEach(function (k) {
+      var o = document.createElement('option');
+      o.value = k; o.textContent = ZOOM_FX[k].name;
+      if (z.type === k) o.selected = true;
+      selEl.appendChild(o);
+    });
+    selEl.onchange = function () {
+      clip.zoomFx = { type: selEl.value, amount: z.amount == null ? ZOOM_DEFAULT_AMOUNT : z.amount };
+      VE.commit(); VE.renderProps(); VE.drawFrame();
+    };
+    sec.appendChild(row('方式', selEl));
+    var pct = Math.round((z.amount == null ? ZOOM_DEFAULT_AMOUNT : z.amount) * 100);
+    var valLabel = h('span', 'val', pct + '%');
+    var sl = range(pct, 5, 100, 1, function (v) {
+      clip.zoomFx = { type: (clip.zoomFx && clip.zoomFx.type) || 'none', amount: v / 100 };
+      valLabel.textContent = v + '%';
+      VE.drawFrame();
+    });
+    sec.appendChild(row('幅度', sl, valLabel));
+    sec.appendChild(h('div', 'prop-hint', '片段播放期間畫面慢慢放大或縮小；幅度＝起訖的縮放差距（30%＝100%→130%）。'));
     box.appendChild(sec);
   }
 

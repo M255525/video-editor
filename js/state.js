@@ -49,6 +49,7 @@
       keyframes: {},
       filter: { brightness: 0, contrast: 0, saturate: 0, hue: 0, blur: 0, sepia: 0, invert: 0, vignette: 0 },
       filterPreset: 'none',
+      zoomFx: { type: 'none', amount: 0.3 },
       transition: { type: 'none', dur: 0.5 }
     };
     if (opts.type === 'text') {

@@ -56,10 +56,22 @@
     };
   }
 
+  /* ── 動態縮放（Zoom In／Zoom Out，Ken Burns 效果）──
+     clip.zoomFx = { type: 'none'|'in'|'out', amount: 0~1 }：片段期間由 1 線性放大到 1+amount（in），或反過來（out）。
+     只乘在繪製用的縮放上，不改 evalTransform，所以選取框／拖曳仍以靜態縮放為準。 */
+  VE.zoomFxFactor = function (clip, t) {
+    var z = clip.zoomFx;
+    if (!z || (z.type !== 'in' && z.type !== 'out') || !(clip.duration > 0)) return 1;
+    var prog = VE.clamp((t - clip.start) / clip.duration, 0, 1);
+    var amt = VE.clamp(z.amount == null ? 0.3 : z.amount, 0, 1);
+    return 1 + amt * (z.type === 'in' ? prog : 1 - prog);
+  };
+
   /* ── 單一片段繪製（video/image/text/sticker） ── */
   function drawVisualClip(clip, t, alphaMul) {
     var p = VE.state.project, W = p.width, H = p.height;
     var tr = evalTransform(clip, t);
+    if (clip.type === 'video' || clip.type === 'image') tr.scale *= VE.zoomFxFactor(clip, t);
     var alpha = VE.clamp(tr.opacity * (alphaMul == null ? 1 : alphaMul), 0, 1);
     if (alpha <= 0) return;
     ctx.save();
@@ -247,16 +259,6 @@
     ctx.restore();
   }
 
-  /** 以畫布中心為基準縮放後畫片段 */
-  function drawScaled(clip, t, s, alpha, W, H) {
-    ctx.save();
-    ctx.translate(W / 2, H / 2);
-    ctx.scale(s, s);
-    ctx.translate(-W / 2, -H / 2);
-    drawVisualClip(clip, t, alpha);
-    ctx.restore();
-  }
-
   function fillOverlay(color, alpha, W, H) {
     if (alpha <= 0) return;
     ctx.save();
@@ -312,14 +314,6 @@
       case 'fadewhite':   // 閃白：舊畫面漸白 → 新畫面由白轉清
         if (prog < 0.5) { drawVisualClip(prev, t, 1); fillOverlay('#fff', prog * 2, W, H); }
         else { drawVisualClip(clip, t, 1); fillOverlay('#fff', (1 - prog) * 2, W, H); }
-        break;
-      case 'zoomin':      // 放大淡入：新畫面由小放大並淡入
-        drawVisualClip(prev, t, 1);
-        drawScaled(clip, t, 0.5 + 0.5 * e, prog, W, H);
-        break;
-      case 'zoomout':     // 衝出淡出：舊畫面往前放大並淡出，露出新畫面
-        drawVisualClip(clip, t, 1);
-        drawScaled(prev, t, 1 + 0.6 * e, 1 - prog, W, H);
         break;
       case 'blur':        // 模糊過渡：舊畫面漸糊 → 新畫面由糊轉清
         var maxBlur = Math.max(4, W * 0.015);
