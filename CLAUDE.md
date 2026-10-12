@@ -31,7 +31,8 @@
 - `project.tracks` 陣列順序＝時間軸顯示順序（上→下：overlay、畫中畫、主影片軌、audio）；**渲染時反向**（尾端先畫）。
 - clip：`start/duration` 為時間軸秒數；`in` 為素材來源秒數；`sourceTime = in + curve(p) * duration * speed`。變速改變 `duration`（來源範圍不變）。
 - 關鍵影格 `clip.keyframes[prop] = [{t,v}]`，`t` 相對片段起點；套用於 x/y/scale/rotation/opacity，線性內插。
-- 轉場掛在片段**開頭**（`clip.transition`），與前一個緊鄰片段銜接（crossfade/fadeblack/wipe/slide）。
+- 轉場掛在片段**開頭**（`clip.transition`），與前一個緊鄰片段銜接。2026-10-13 由 4 種擴充為 22 種：panels.js `TRANSITIONS`（含 `group` 分組，卡片與下拉選單都依群組顯示）↔ preview.js `drawWithTransition`；擦除/滑入/推移三類的四個方向統一走 `TRANS_DIR` 表（`[種類, dx, dy]`），動態型轉場用 smoothstep `ease()`。舊 key `wipe`/`slide` 保留（＝往右），舊專案不用遷移。`blur` 轉場在外層設 `ctx.filter`，`drawVisualClip` 會把片段自身濾鏡**疊加**上去而非覆蓋。
+- 濾鏡：`clip.filter` 2026-10-13 新增 `sepia`/`invert`/`vignette`（0~1）；前兩者是 CSS filter，`vignette` 是 `drawVignette()` 在素材畫面範圍（`drawMediaFit` 回傳的寬高）畫徑向漸層。舊專案缺這三個欄位一律視為 0（panels.js `filterFrom()`／滑桿 `|| 0`）。預設濾鏡由 9 種擴充為 20 種。
 - 軌道數量是**動態的**：時間軸工具列「＋軌道」可加音訊/畫中畫/文字貼圖軌（音訊加最下、疊加軌加最上、畫中畫插在最上層影片軌前）；空的非主軌可從軌道標頭 ✕ 刪除；**拖曳軌道標頭可上下調整圖層順序**（timeline.js `startHeadDrag`，越過目標列中線才交換）。
 - 片段軌道相容規則（timeline.js `compatibleTrack`）：audio→音訊軌；video/image→影片軌；**text/sticker→疊加軌或影片軌皆可**。
 - SRT/VTT 字幕：`VE.importSRT(file)`（media.js）解析後生成文字片段，放進名為「字幕」的專用 overlay 軌（不存在則自動建立在最上層）；`importFiles` 會依副檔名自動路由。

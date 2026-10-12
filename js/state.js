@@ -47,7 +47,7 @@
       volume: 1, muted: false, fadeIn: 0, fadeOut: 0,
       transform: { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 },
       keyframes: {},
-      filter: { brightness: 0, contrast: 0, saturate: 0, hue: 0, blur: 0 },
+      filter: { brightness: 0, contrast: 0, saturate: 0, hue: 0, blur: 0, sepia: 0, invert: 0, vignette: 0 },
       filterPreset: 'none',
       transition: { type: 'none', dur: 0.5 }
     };

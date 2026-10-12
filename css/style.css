@@ -102,6 +102,7 @@ input,select,textarea{font-family:var(--font)}
 .fx-card:hover{border-color:var(--accent)}
 .fx-card .fx-icon{font-size:22px;margin-bottom:4px}
 .fx-card .fx-name{font-size:12px}
+.fx-group{grid-column:1/-1;font-size:11px;color:var(--dim);margin:4px 0 -2px;letter-spacing:.05em}
 .fx-card.active{border-color:var(--accent);background:rgba(56,189,248,.1)}
 
 /* ═══ 中央預覽 ═══ */

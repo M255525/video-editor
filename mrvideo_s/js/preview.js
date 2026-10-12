@@ -38,7 +38,9 @@
     if (f.brightness) parts.push('brightness(' + (1 + f.brightness).toFixed(3) + ')');
     if (f.contrast) parts.push('contrast(' + (1 + f.contrast).toFixed(3) + ')');
     if (f.saturate) parts.push('saturate(' + Math.max(0, 1 + f.saturate).toFixed(3) + ')');
+    if (f.sepia) parts.push('sepia(' + VE.clamp(f.sepia, 0, 1).toFixed(3) + ')');
     if (f.hue) parts.push('hue-rotate(' + f.hue + 'deg)');
+    if (f.invert) parts.push('invert(' + VE.clamp(f.invert, 0, 1).toFixed(3) + ')');
     if (f.blur) parts.push('blur(' + f.blur + 'px)');
     return parts.join(' ');
   }
@@ -65,19 +67,21 @@
     ctx.translate(W / 2 + tr.x, H / 2 + tr.y);
     ctx.rotate(tr.rotation * Math.PI / 180);
     var fs = filterString(clip);
-    if (fs) ctx.filter = fs;
+    /* 轉場（如模糊轉場）可能已在外層設定 ctx.filter，這裡疊加而不是覆蓋 */
+    var baseFilter = ctx.filter;
+    if (fs) ctx.filter = (baseFilter && baseFilter !== 'none') ? baseFilter + ' ' + fs : fs;
 
     if (clip.type === 'video') {
       var entry = VE.ensureClipEl(clip);
       if (entry && entry.el.readyState >= 2 && entry.el.videoWidth) {
-        drawMediaFit(entry.el, entry.el.videoWidth, entry.el.videoHeight, clip, W, H, tr.scale);
+        drawVignette(clip, drawMediaFit(entry.el, entry.el.videoWidth, entry.el.videoHeight, clip, W, H, tr.scale));
       } else {
         drawPlaceholder(clip, W, H);
       }
     } else if (clip.type === 'image') {
       var img = VE.getImage(clip.mediaId);
       if (img) {
-        drawMediaFit(img, img.naturalWidth, img.naturalHeight, clip, W, H, tr.scale);
+        drawVignette(clip, drawMediaFit(img, img.naturalWidth, img.naturalHeight, clip, W, H, tr.scale));
       } else {
         drawPlaceholder(clip, W, H);
       }
@@ -118,14 +122,29 @@
     return { x: (sw - cw) * cx, y: (sh - ch) * cy, w: cw, h: ch };
   };
 
+  /** 回傳實際畫出的寬高（以片段中心為原點），供暗角等疊加效果對齊 */
   function drawMediaFit(src, sw, sh, clip, W, H, scale) {
     if (VE.clipFit(clip) === 'cover') {
       var r = VE.cropRect(clip, sw, sh);
       ctx.drawImage(src, r.x, r.y, r.w, r.h, -W * scale / 2, -H * scale / 2, W * scale, H * scale);
-    } else {
-      var s = Math.min(W / sw, H / sh) * scale;
-      ctx.drawImage(src, -sw * s / 2, -sh * s / 2, sw * s, sh * s);
+      return { w: W * scale, h: H * scale };
     }
+    var s = Math.min(W / sw, H / sh) * scale;
+    ctx.drawImage(src, -sw * s / 2, -sh * s / 2, sw * s, sh * s);
+    return { w: sw * s, h: sh * s };
+  }
+
+  /** 暗角（clip.filter.vignette 0~1）：四周壓暗的徑向漸層，只蓋在素材畫面範圍內 */
+  function drawVignette(clip, size) {
+    var v = clip.filter && clip.filter.vignette;
+    if (!v || !size) return;
+    var R = Math.hypot(size.w, size.h) / 2;
+    var g = ctx.createRadialGradient(0, 0, R * 0.35, 0, 0, R);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,' + VE.clamp(v, 0, 1).toFixed(3) + ')');
+    ctx.filter = 'none';
+    ctx.fillStyle = g;
+    ctx.fillRect(-size.w / 2, -size.h / 2, size.w, size.h);
   }
 
   function drawPlaceholder(clip, W, H) {
@@ -201,7 +220,54 @@
     });
   }
 
-  /* ── 轉場 ── */
+  /* ── 轉場 ──
+     方向型轉場：[種類, dx, dy]，(dx,dy) 為畫面移動方向（1,0＝往右） */
+  var TRANS_DIR = {
+    wipe: ['wipe', 1, 0], wipeleft: ['wipe', -1, 0], wipedown: ['wipe', 0, 1], wipeup: ['wipe', 0, -1],
+    slide: ['slide', 1, 0], slideleft: ['slide', -1, 0], slidedown: ['slide', 0, 1], slideup: ['slide', 0, -1],
+    push: ['push', 1, 0], pushleft: ['push', -1, 0], pushdown: ['push', 0, 1], pushup: ['push', 0, -1]
+  };
+
+  function ease(x) { return x * x * (3 - 2 * x); }   // smoothstep：動態型轉場起訖較柔和
+
+  /** 只在 pathFn 描出的區域內畫片段 */
+  function drawClipped(clip, t, pathFn) {
+    ctx.save();
+    ctx.beginPath();
+    pathFn();
+    ctx.clip();
+    drawVisualClip(clip, t, 1);
+    ctx.restore();
+  }
+
+  function drawShifted(clip, t, dx, dy) {
+    ctx.save();
+    ctx.translate(dx, dy);
+    drawVisualClip(clip, t, 1);
+    ctx.restore();
+  }
+
+  /** 以畫布中心為基準縮放後畫片段 */
+  function drawScaled(clip, t, s, alpha, W, H) {
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(s, s);
+    ctx.translate(-W / 2, -H / 2);
+    drawVisualClip(clip, t, alpha);
+    ctx.restore();
+  }
+
+  function fillOverlay(color, alpha, W, H) {
+    if (alpha <= 0) return;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.filter = 'none';
+    ctx.globalAlpha = VE.clamp(alpha, 0, 1);
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
   function drawWithTransition(track, clip, t) {
     var trans = clip.transition;
     var td = trans ? Math.min(trans.dur, clip.duration) : 0;
@@ -211,7 +277,29 @@
       return;
     }
     var prog = VE.clamp((t - clip.start) / td, 0, 1);
+    var e = ease(prog);
     var p = VE.state.project, W = p.width, H = p.height;
+    var dir = TRANS_DIR[trans.type];
+    if (dir) {
+      var dx = dir[1], dy = dir[2];
+      if (dir[0] === 'wipe') {
+        drawVisualClip(prev, t, 1);
+        drawClipped(clip, t, function () {
+          if (dx > 0) ctx.rect(0, 0, W * e, H);
+          else if (dx < 0) ctx.rect(W * (1 - e), 0, W * e, H);
+          else if (dy > 0) ctx.rect(0, 0, W, H * e);
+          else ctx.rect(0, H * (1 - e), W, H * e);
+        });
+      } else if (dir[0] === 'slide') {
+        drawVisualClip(prev, t, 1);
+        drawShifted(clip, t, -dx * W * (1 - e), -dy * H * (1 - e));
+      } else {   // push：舊畫面被新畫面推出去
+        drawShifted(prev, t, dx * W * e, dy * H * e);
+        drawShifted(clip, t, -dx * W * (1 - e), -dy * H * (1 - e));
+      }
+      return;
+    }
+    var R = Math.hypot(W, H) / 2;
     switch (trans.type) {
       case 'crossfade':
         drawVisualClip(prev, t, 1 - prog);
@@ -221,21 +309,47 @@
         if (prog < 0.5) drawVisualClip(prev, t, 1 - prog * 2);
         else drawVisualClip(clip, t, prog * 2 - 1);
         break;
-      case 'wipe':
+      case 'fadewhite':   // 閃白：舊畫面漸白 → 新畫面由白轉清
+        if (prog < 0.5) { drawVisualClip(prev, t, 1); fillOverlay('#fff', prog * 2, W, H); }
+        else { drawVisualClip(clip, t, 1); fillOverlay('#fff', (1 - prog) * 2, W, H); }
+        break;
+      case 'zoomin':      // 放大淡入：新畫面由小放大並淡入
         drawVisualClip(prev, t, 1);
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, 0, W * prog, H);
-        ctx.clip();
+        drawScaled(clip, t, 0.5 + 0.5 * e, prog, W, H);
+        break;
+      case 'zoomout':     // 衝出淡出：舊畫面往前放大並淡出，露出新畫面
         drawVisualClip(clip, t, 1);
+        drawScaled(prev, t, 1 + 0.6 * e, 1 - prog, W, H);
+        break;
+      case 'blur':        // 模糊過渡：舊畫面漸糊 → 新畫面由糊轉清
+        var maxBlur = Math.max(4, W * 0.015);
+        ctx.save();
+        if (prog < 0.5) { ctx.filter = 'blur(' + (maxBlur * prog * 2).toFixed(1) + 'px)'; drawVisualClip(prev, t, 1); }
+        else { ctx.filter = 'blur(' + (maxBlur * (1 - prog) * 2).toFixed(1) + 'px)'; drawVisualClip(clip, t, 1); }
         ctx.restore();
         break;
-      case 'slide':
+      case 'circle':      // 圓形展開
         drawVisualClip(prev, t, 1);
-        ctx.save();
-        ctx.translate(W * (prog - 1), 0);
-        drawVisualClip(clip, t, 1);
-        ctx.restore();
+        drawClipped(clip, t, function () { ctx.arc(W / 2, H / 2, R * e, 0, Math.PI * 2); });
+        break;
+      case 'clock':       // 時鐘掃描：順時針扇形
+        drawVisualClip(prev, t, 1);
+        if (prog > 0) drawClipped(clip, t, function () {
+          ctx.moveTo(W / 2, H / 2);
+          ctx.arc(W / 2, H / 2, R * 1.05, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * prog);
+          ctx.closePath();
+        });
+        break;
+      case 'door':        // 開門：由中線往左右打開
+        drawVisualClip(prev, t, 1);
+        drawClipped(clip, t, function () { ctx.rect(W / 2 * (1 - e), 0, W * e, H); });
+        break;
+      case 'blinds':      // 百葉窗：8 條橫向葉片同時展開
+        drawVisualClip(prev, t, 1);
+        drawClipped(clip, t, function () {
+          var n = 8, bh = H / n;
+          for (var i = 0; i < n; i++) ctx.rect(0, i * bh, W, bh * e + 0.5);
+        });
         break;
       default:
         drawVisualClip(clip, t, 1);

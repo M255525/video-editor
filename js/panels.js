@@ -11,6 +11,7 @@
 
   var STICKERS = ['😀','😂','😍','🥳','😎','🤔','👍','👏','🎉','🎊','❤️','🔥','⭐','✨','💯','💡','🎵','🎬','📣','⚠️','✅','❌','➡️','⬅️','☀️','🌙','🌈','⚡','💰','🏆'];
 
+  /* v 未列出的參數（sepia 懷舊／invert 負片／vignette 暗角）一律視為 0 */
   var FILTER_PRESETS = {
     none:  { name: '原圖', icon: '⬜', v: { brightness: 0, contrast: 0, saturate: 0, hue: 0, blur: 0 } },
     vivid: { name: '鮮明', icon: '🌈', v: { brightness: 0.05, contrast: 0.15, saturate: 0.35, hue: 0, blur: 0 } },
@@ -20,15 +21,53 @@
     film:  { name: '膠片', icon: '🎞️', v: { brightness: -0.05, contrast: 0.2, saturate: -0.2, hue: 0, blur: 0 } },
     bw:    { name: '黑白', icon: '⚫', v: { brightness: 0, contrast: 0.1, saturate: -1, hue: 0, blur: 0 } },
     dream: { name: '夢幻', icon: '💭', v: { brightness: 0.1, contrast: -0.05, saturate: 0.2, hue: 0, blur: 1.5 } },
-    blurfx:{ name: '畫面模糊', icon: '🌫️', v: { brightness: 0, contrast: 0, saturate: 0, hue: 0, blur: 6 } }
+    blurfx:{ name: '畫面模糊', icon: '🌫️', v: { brightness: 0, contrast: 0, saturate: 0, hue: 0, blur: 6 } },
+    cinema:{ name: '電影感', icon: '🎬', v: { brightness: -0.04, contrast: 0.2, saturate: -0.15, hue: 4, blur: 0, vignette: 0.5 } },
+    sepia: { name: '懷舊棕', icon: '📜', v: { brightness: 0.02, contrast: 0.05, saturate: -0.1, hue: 0, blur: 0, sepia: 0.75, vignette: 0.35 } },
+    fresh: { name: '清新', icon: '🍃', v: { brightness: 0.08, contrast: -0.04, saturate: 0.12, hue: 8, blur: 0 } },
+    japan: { name: '日系', icon: '🌸', v: { brightness: 0.12, contrast: -0.15, saturate: -0.18, hue: 4, blur: 0 } },
+    fade:  { name: '褪色', icon: '🥀', v: { brightness: 0.08, contrast: -0.28, saturate: -0.3, hue: 0, blur: 0 } },
+    noir:  { name: '高反差黑白', icon: '🎩', v: { brightness: -0.02, contrast: 0.45, saturate: -1, hue: 0, blur: 0, vignette: 0.45 } },
+    night: { name: '夜色', icon: '🌃', v: { brightness: -0.14, contrast: 0.15, saturate: -0.1, hue: 18, blur: 0, vignette: 0.4 } },
+    sunset:{ name: '夕陽', icon: '🌅', v: { brightness: 0.03, contrast: 0.1, saturate: 0.25, hue: -22, blur: 0, sepia: 0.2 } },
+    pop:   { name: '繽紛普普', icon: '🍭', v: { brightness: 0.04, contrast: 0.3, saturate: 0.8, hue: 0, blur: 0 } },
+    vignet:{ name: '暗角聚焦', icon: '🔦', v: { brightness: 0, contrast: 0.05, saturate: 0, hue: 0, blur: 0, vignette: 0.65 } },
+    invert:{ name: '負片', icon: '🔄', v: { brightness: 0, contrast: 0, saturate: 0, hue: 0, blur: 0, invert: 1 } }
   };
+  var FILTER_KEYS = ['brightness', 'contrast', 'saturate', 'hue', 'blur', 'sepia', 'invert', 'vignette'];
 
+  /** 依 FILTER_KEYS 產生完整濾鏡物件（缺的參數補 0） */
+  function filterFrom(v) {
+    var f = {};
+    FILTER_KEYS.forEach(function (k) { f[k] = (v && v[k]) || 0; });
+    return f;
+  }
+
+  /* 新增轉場需同步 preview.js drawWithTransition（方向型在 TRANS_DIR） */
   var TRANSITIONS = {
-    none:      { name: '無', icon: '⬜' },
-    crossfade: { name: '交疊淡化', icon: '🔀' },
-    fadeblack: { name: '黑場過渡', icon: '⬛' },
-    wipe:      { name: '擦除', icon: '➡️' },
-    slide:     { name: '滑動', icon: '↔️' }
+    none:      { name: '無', icon: '⬜', group: '基本' },
+    crossfade: { name: '交疊淡化', icon: '🔀', group: '基本' },
+    fadeblack: { name: '黑場過渡', icon: '⬛', group: '基本' },
+    fadewhite: { name: '閃白', icon: '⚪', group: '基本' },
+    blur:      { name: '模糊過渡', icon: '🌫️', group: '基本' },
+    wipe:      { name: '擦除 →', icon: '➡️', group: '擦除' },
+    wipeleft:  { name: '擦除 ←', icon: '⬅️', group: '擦除' },
+    wipedown:  { name: '擦除 ↓', icon: '⬇️', group: '擦除' },
+    wipeup:    { name: '擦除 ↑', icon: '⬆️', group: '擦除' },
+    slide:     { name: '滑入 →', icon: '↔️', group: '滑入' },
+    slideleft: { name: '滑入 ←', icon: '↔️', group: '滑入' },
+    slidedown: { name: '滑入 ↓', icon: '↕️', group: '滑入' },
+    slideup:   { name: '滑入 ↑', icon: '↕️', group: '滑入' },
+    push:      { name: '推移 →', icon: '⏩', group: '推移' },
+    pushleft:  { name: '推移 ←', icon: '⏪', group: '推移' },
+    pushdown:  { name: '推移 ↓', icon: '⏬', group: '推移' },
+    pushup:    { name: '推移 ↑', icon: '⏫', group: '推移' },
+    zoomin:    { name: '放大淡入', icon: '🔍', group: '特效' },
+    zoomout:   { name: '衝出淡出', icon: '💨', group: '特效' },
+    circle:    { name: '圓形展開', icon: '⭕', group: '特效' },
+    clock:     { name: '時鐘掃描', icon: '🕐', group: '特效' },
+    door:      { name: '開門', icon: '🚪', group: '特效' },
+    blinds:    { name: '百葉窗', icon: '🪟', group: '特效' }
   };
 
   /* ── 左側面板初始化 ── */
@@ -118,8 +157,13 @@
 
     /* 轉場卡片 */
     var tc = document.getElementById('transitionCards');
+    var lastGroup = null;
     Object.keys(TRANSITIONS).forEach(function (key) {
       var tr = TRANSITIONS[key];
+      if (tr.group !== lastGroup) {
+        lastGroup = tr.group;
+        tc.appendChild(h('div', 'fx-group', tr.group));
+      }
       var card = document.createElement('div');
       card.className = 'fx-card';
       card.dataset.transition = key;
@@ -169,8 +213,7 @@
     if (!sel || (sel.clip.type !== 'video' && sel.clip.type !== 'image')) {
       VE.toast('請先選取影片或圖片片段'); return;
     }
-    var v = FILTER_PRESETS[key].v;
-    sel.clip.filter = { brightness: v.brightness, contrast: v.contrast, saturate: v.saturate, hue: v.hue, blur: v.blur };
+    sel.clip.filter = filterFrom(FILTER_PRESETS[key].v);
     sel.clip.filterPreset = key;
     VE.commit();
     VE.drawFrame();
@@ -589,15 +632,19 @@
     { key: 'contrast', label: '對比', min: -1, max: 1, step: 0.02 },
     { key: 'saturate', label: '飽和', min: -1, max: 1, step: 0.02 },
     { key: 'hue', label: '色相', min: -180, max: 180, step: 1 },
-    { key: 'blur', label: '模糊', min: 0, max: 12, step: 0.5 }
+    { key: 'blur', label: '模糊', min: 0, max: 12, step: 0.5 },
+    { key: 'sepia', label: '懷舊', min: 0, max: 1, step: 0.02 },
+    { key: 'vignette', label: '暗角', min: 0, max: 1, step: 0.02 },
+    { key: 'invert', label: '負片', min: 0, max: 1, step: 0.02 }
   ];
 
   function buildFilterSection(box, clip) {
     var sec = h('div', 'props-section');
     sec.appendChild(h('h4', null, '濾鏡調整'));
     FILTER_SLIDERS.forEach(function (F) {
-      var valLabel = h('span', 'val', String(clip.filter[F.key]));
-      var sl = range(clip.filter[F.key], F.min, F.max, F.step, function (v) {
+      var cur = clip.filter[F.key] || 0;   // 舊專案沒有 sepia/vignette/invert
+      var valLabel = h('span', 'val', String(cur));
+      var sl = range(cur, F.min, F.max, F.step, function (v) {
         clip.filter[F.key] = v;
         clip.filterPreset = 'custom';
         valLabel.textContent = String(Math.round(v * 100) / 100);
@@ -608,7 +655,7 @@
     });
     var reset = h('button', 'prop-btn', '重設濾鏡');
     reset.onclick = function () {
-      clip.filter = { brightness: 0, contrast: 0, saturate: 0, hue: 0, blur: 0 };
+      clip.filter = filterFrom(null);
       clip.filterPreset = 'none';
       VE.commit(); VE.renderProps(); VE.drawFrame();
     };
@@ -679,11 +726,17 @@
     var sec = h('div', 'props-section');
     sec.appendChild(h('h4', null, '轉場（片段開頭）'));
     var selEl = document.createElement('select');
+    var og = null;
     Object.keys(TRANSITIONS).forEach(function (k) {
+      if (!og || og.label !== TRANSITIONS[k].group) {
+        og = document.createElement('optgroup');
+        og.label = TRANSITIONS[k].group;
+        selEl.appendChild(og);
+      }
       var o = document.createElement('option');
       o.value = k; o.textContent = TRANSITIONS[k].name;
       if (clip.transition.type === k) o.selected = true;
-      selEl.appendChild(o);
+      og.appendChild(o);
     });
     selEl.onchange = function () {
       clip.transition.type = selEl.value;
