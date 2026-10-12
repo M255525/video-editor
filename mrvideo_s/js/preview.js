@@ -63,7 +63,7 @@
     var z = clip.zoomFx;
     if (!z || (z.type !== 'in' && z.type !== 'out') || !(clip.duration > 0)) return 1;
     var prog = VE.clamp((t - clip.start) / clip.duration, 0, 1);
-    var amt = VE.clamp(z.amount == null ? 0.3 : z.amount, 0, 1);
+    var amt = VE.clamp(z.amount == null ? 0.12 : z.amount, 0, 1);
     return 1 + amt * (z.type === 'in' ? prog : 1 - prog);
   };
 

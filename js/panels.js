@@ -40,7 +40,7 @@
     in:   { name: '放大推進 Zoom In', icon: '🔍' },
     out:  { name: '縮小拉遠 Zoom Out', icon: '🔭' }
   };
-  var ZOOM_DEFAULT_AMOUNT = 0.3;
+  var ZOOM_DEFAULT_AMOUNT = 0.12;   // 幅度越小縮放越慢（變化速度＝幅度÷片段長度）
 
   var FILTER_KEYS = ['brightness', 'contrast', 'saturate', 'hue', 'blur', 'sepia', 'invert', 'vignette'];
 
@@ -717,13 +717,13 @@
     sec.appendChild(row('方式', selEl));
     var pct = Math.round((z.amount == null ? ZOOM_DEFAULT_AMOUNT : z.amount) * 100);
     var valLabel = h('span', 'val', pct + '%');
-    var sl = range(pct, 5, 100, 1, function (v) {
+    var sl = range(pct, 2, 60, 1, function (v) {
       clip.zoomFx = { type: (clip.zoomFx && clip.zoomFx.type) || 'none', amount: v / 100 };
       valLabel.textContent = v + '%';
       VE.drawFrame();
     });
     sec.appendChild(row('幅度', sl, valLabel));
-    sec.appendChild(h('div', 'prop-hint', '片段播放期間畫面慢慢放大或縮小；幅度＝起訖的縮放差距（30%＝100%→130%）。'));
+    sec.appendChild(h('div', 'prop-hint', '片段播放期間畫面慢慢放大或縮小；幅度＝起訖的縮放差距（12%＝100%→112%）；數值越小、片段越長，縮放越慢。'));
     box.appendChild(sec);
   }
 
